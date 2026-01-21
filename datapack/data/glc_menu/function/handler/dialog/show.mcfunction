@@ -3,12 +3,12 @@
 # ═══════════════════════════════════════════════════
 
 # Dialog göster
-execute as @p[tag=gulce_admin,tag=!closed.glc] run function glc_menu:handler/dialog/show_final with storage mc:dialog
+execute as @p[tag=gulce_admin,tag=!closed.glc,limit=1,sort=arbitrary] at @s run function glc_menu:handler/dialog/show_final with storage mc:dialog
 
-# ✅ YENİ: Skor -1 yap (tekrar gösterilmesin)
+# Skor -1 yap (tekrar gösterilmesin)
 scoreboard players set @s gulce_load.dialog -1
 
-# ✅ YENİ: Pending tag kaldır
+# Pending tag kaldır
 tag @s remove glc.show_pending
 
 # Tag temizle
