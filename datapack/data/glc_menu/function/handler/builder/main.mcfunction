@@ -2,14 +2,19 @@
 # Ana Menü Builder
 # ═══════════════════════════════════════════════════
 
-# --------------------- Devre Dışı ---------------------
-# function glc_menu:handler/dialog/loading
-# data modify storage mc:dialog ui set value {type:"minecraft:multi_action",title:{"text":"🎮 GULCE İzin Yönetimi","color":"gold","bold":true},body:{type:"minecraft:plain_message",contents:"§l§a✨ İzinleri buradan yönetebilirsiniz\n\n§7• İzin Listesi (Yürüt/Düzenle/Sil)\n§7• Yeni İzin Ekle"},can_close_with_escape:true,pause:false,"columns":1,actions:[]}
-# data modify storage mc:dialog ui.actions append value {label:"📋 İzin Listesi",action:{type:"minecraft:run_command",command:"/trigger gulce_menu set 2"}}
-# data modify storage mc:dialog ui.actions append value {label:"➕ Yeni İzin Ekle",action:{type:"minecraft:show_dialog",dialog:{type:"minecraft:multi_action",title:"➕ Yeni İzin Ekle",inputs:[{type:"minecraft:text",key:"id",label:"ID",max_length:100},{type:"minecraft:text",key:"player",label:"Oyuncu",max_length:100},{type:"minecraft:text",key:"permission",label:"İzin Adı",max_length:100},{type:"minecraft:text",key:"level",label:"Seviye",initial:"1",max_length:10}],actions:[{label:"✅ Ekle",action:{type:"minecraft:dynamic/run_command",template:"/function custom_admin:add/permission {id:\"$(id)\",player:\"$(player)\",permission:\"$(permission)\",level:$(level)}"}}]}}}
-# data modify storage mc:dialog ui.actions append value {label:"◀️ Ana Panel",action:{type:"minecraft:run_command",command:"/trigger gulce_trigger set 1"}}
-# function glc_menu:handler/dialog/open with storage mc:dialog
-# --------------------- --------------------- 
+# Loading göster
+scoreboard players set @s gulce_load.dialog 20
+function glc_menu:handler/dialog/loading
 
-# Etkin:
-tellraw @s [  {"text":"🎮 GULCE İzin Yönetimi\n","color":"gold","bold":true},  {"text":"✨ İzinleri buradan yönetebilirsiniz\n\n• İzin Listesi (Yürüt/Düzenle/Sil)\n• Yeni İzin Ekle\n\n","color":"gray"},  {"text":"📋 İzin Listesi","color":"yellow","bold":true,"click_event":{"action":"run_command","command":"/trigger gulce_menu set 2"},"hover_event":{"action":"show_text","value":[{"text":"İzin listesini açmak için tıkla"}]}},  {"text":"  "},  {"text":"➕ Yeni İzin Ekle","color":"green","bold":true,"click_event":{"action":"show_dialog","dialog":{"type":"minecraft:multi_action","title":"➕ Yeni İzin Ekle","inputs":[{"type":"minecraft:text","key":"id","label":"ID","max_length":100},{"type":"minecraft:text","key":"player","label":"Oyuncu","max_length":100},{"type":"minecraft:text","key":"permission","label":"İzin Adı","max_length":100},{"type":"minecraft:text","key":"level","label":"Seviye","initial":"1","max_length":10}],"actions":[{"label":"✅ Ekle","action":{"type":"minecraft:dynamic/run_command","template":"/function custom_admin:add/permission {id:\"$(id)\",player:\"$(player)\",permission:\"$(permission)\",level:$(level)}"}}]}},"hover_event":{"action":"show_text","value":[{"text":"Yeni izin ekleme menüsünü aç"}]}},  {"text":"\n"},  {"text":"◀️ Ana Panel","color":"red","bold":true,"click_event":{"action":"run_command","command":"/trigger gulce_trigger set 1"},"hover_event":{"action":"show_text","value":[{"text":"Ana panele dön"}]}},  {"text":"  "},  {"text":"🛠️ Toplu İşlemler","color":"aqua","bold":true,"click_event":{"action":"run_command","command":"/trigger gulce_menu set 3"},"hover_event":{"action":"show_text","value":[{"text":"Toplu işlemler panelini aç"}]}},  {"text":"  "},  {"text":"❌ Kapat","color":"dark_red","bold":true,"click_event":{"action":"run_command","command":"/tellraw @s \"\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\""},"hover_event":{"action":"show_text","value":[{"text":"Menüyü kapat"}]}}]
+# Ana menü JSON'ı hazırla
+data modify storage mc:dialog ui set value {type:"minecraft:multi_action",title:{"text":"🎮 GULCE İzin Yönetimi","color":"gold","bold":true},body:{type:"minecraft:plain_message",contents:"§l§a✨ İzinleri buradan yönetebilirsiniz\n\n§7• İzin Listesi (Yürüt/Düzenle/Sil)\n§7• Yeni İzin Ekle"},can_close_with_escape:true,pause:false,actions:[]}
+
+# Butonları ekle
+data modify storage mc:dialog ui.actions append value {label:"📋 İzin Listesi",action:{type:"minecraft:run_command",command:"/trigger gulce_menu set 2"}}
+
+data modify storage mc:dialog ui.actions append value {label:"➕ Yeni İzin Ekle",action:{type:"minecraft:show_dialog",dialog:{type:"minecraft:multi_action",title:"➕ Yeni İzin Ekle",inputs:[{type:"minecraft:text",key:"id",label:"ID",max_length:100},{type:"minecraft:text",key:"player",label:"Oyuncu",max_length:100},{type:"minecraft:text",key:"permission",label:"İzin Adı",max_length:100},{type:"minecraft:text",key:"level",label:"Seviye",initial:"1",max_length:10}],actions:[{label:"✅ Ekle",action:{type:"minecraft:dynamic/run_command",template:"/function custom_admin:add/permission {id:\"$(id)\",player:\"$(player)\",permission:\"$(permission)\",level:$(level)}"}}]}}}
+
+data modify storage mc:dialog ui.actions append value {label:"◀️ Ana Panel",action:{type:"minecraft:run_command",command:"/trigger gulce_trigger set 1"}}
+
+# Dialog aç
+function glc_menu:handler/dialog/open
