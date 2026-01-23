@@ -148,7 +148,7 @@
       "width": 119,
       "action": {
         "type": "minecraft:dynamic/run_command",
-        "template": "/function gulce_adminpower_addons:config/load {\"load_second\":\"$(load_second)\",\"cl_second\":\"$(cl_second)\",\"diamond_to_emerald_recipe\":\"$(diamond_to_emerald_recipe)\",\"level\":$(level)}"
+        "template": "/function gulce_adminpower_addons:config/load {\"load_second\":\"$(load_second)\",\"clear_second\":\"$(cl_second)\",\"diamond_to_emerald_recipe\":\"$(diamond_to_emerald_recipe)\",\"level\":$(level)}"
       }
     },
     {

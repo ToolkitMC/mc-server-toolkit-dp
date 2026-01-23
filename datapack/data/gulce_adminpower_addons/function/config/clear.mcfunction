@@ -1,0 +1,1 @@
+$schedule function gulce_adminpower_addons:config/clear1 $(cl_second)
