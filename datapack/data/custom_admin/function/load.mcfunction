@@ -46,5 +46,6 @@ scoreboard objectives add coords_x dummy
 scoreboard objectives add coords_y dummy
 scoreboard objectives add coords_z dummy
 scoreboard objectives add ap_clear trigger
+scoreboard objectives add ap_freezeAll trigger
 
 schedule function custom_admin:load2 2t replace

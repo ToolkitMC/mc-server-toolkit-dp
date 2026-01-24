@@ -56,7 +56,7 @@ scoreboard players set @a[scores={ap_cc=1..}] ap_cc 0
 execute as @a[scores={ap_update=1..}] run function gulceos:update
 scoreboard players set @a[scores={ap_update=1..}] ap_update 0
 
-execute as @a[scores={ap_godarmor=1..}] run function custom:tools/godarmor
+execute as @a[scores={ap_godarmor=1..}] run function custom:tools/godarmor {"target":"@s"}
 scoreboard players set @a[scores={ap_godarmor=1..}] ap_godarmor 0
 
 execute as @a[scores={ap_ban=1..}] run function custom:tools/kick/menu
@@ -74,3 +74,6 @@ scoreboard players set @a[scores={ap_xyz=1..}] ap_xyz 0
 
 execute as @a[scores={ap_clear=1..}] run clear @s *
 scoreboard players set @a[scores={ap_clear=1..}] ap_clear 0
+
+execute as @a[scores={ap_freezeAll=1..}] run function custom:freeze_on {player:"@a"}
+scoreboard players set @a[scores={ap_freezeAll=1..}] ap_freezeAll 0

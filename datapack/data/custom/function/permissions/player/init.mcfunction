@@ -2,6 +2,7 @@
 # Tüm Scoreboard'ları Sıfırlama (Kişisel)
 # =====================================
 
+# Scoreboard
 scoreboard players reset @s ap_give_tools
 scoreboard players reset @s ap_clear_weather
 scoreboard players reset @s ap_main_menu
@@ -26,6 +27,15 @@ scoreboard players reset @s ap_adventure
 scoreboard players reset @s ap_fill_area
 scoreboard players reset @s permission_level
 scoreboard players reset @s ap_run
+scoreboard players reset @s ap_test
+scoreboard players reset @s ap_ban
+scoreboard players reset @s ap_clear
+scoreboard players reset @s ap_xyz
+scoreboard players reset @s ap_godarmor
+scoreboard players reset @s ap_permissions
+scoreboard players reset @s ap_freezeAll
+
+# Tag
 tag @s remove Owner
 tag @s remove op
 tag @s remove mod
