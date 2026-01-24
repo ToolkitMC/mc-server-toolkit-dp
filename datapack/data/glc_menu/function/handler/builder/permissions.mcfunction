@@ -3,8 +3,7 @@
 # ═══════════════════════════════════════════════════
 
 # Loading Göster
-scoreboard players set * gulce_load.dialog 19
-function glc_menu:handler/dialog/loading
+function glc_menu:handler/dialog/loading {tick:25}
 
 # İzin sayısını kontrol et
 execute store result score #perm_count gulce_id run data get storage mc:handler data.permissions

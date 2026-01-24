@@ -3,8 +3,7 @@
 # ═══════════════════════════════════════════════════
 
 # Loading göster
-scoreboard players set * gulce_load.dialog 19
-function glc_menu:handler/dialog/loading
+function glc_menu:handler/dialog/loading {tick:30}
 
 # Ana menü JSON'ı hazırla
 data modify storage mc:dialog ui set value {type:"minecraft:multi_action",title:{"text":"🎮 GULCE İzin Yönetimi","color":"gold","bold":true},body:{type:"minecraft:plain_message",contents:"§l§a✨ İzinleri buradan yönetebilirsiniz\n\n§7• İzin Listesi (Yürüt/Düzenle/Sil)\n§7• Yeni İzin Ekle"},can_close_with_escape:true,pause:false,actions:[]}
