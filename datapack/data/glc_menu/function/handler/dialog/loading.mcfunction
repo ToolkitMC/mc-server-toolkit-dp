@@ -9,6 +9,7 @@ tag @e[type=minecraft:interaction,tag=_glcMenu] remove _glcMenu
 tag @s add glc.show_pending
 data remove entity @e[limit=1,type=minecraft:interaction] interaction.player[]
 tag @s add closed.glc
+data remove entity @e[limit=1,type=minecraft:interaction] attack.player[]
 tag @e[type=minecraft:interaction,tag=!_glcMenu] add _glcMenu
 
 # Yetki Kontrol
