@@ -17,5 +17,3 @@ tag @a[tag=glc.close_dialog] remove glc.close_dialog
 
 execute as @e[type=interaction,tag=_glcMenu] store success entity @s attack.player[] int 0 on attacker run function glc_menu:handler/builder/main
 execute as @e[type=interaction,tag=_glcMenu] store success entity @s interaction.player[] int 0 on target run function glc_menu:handler/builder/permissions
-data remove entity @e[limit=1,type=minecraft:interaction] attack.player[]
-data remove entity @e[limit=1,type=minecraft:interaction] interaction.player[]
