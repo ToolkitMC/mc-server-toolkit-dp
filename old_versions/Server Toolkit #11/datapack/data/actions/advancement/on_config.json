@@ -1,0 +1,22 @@
+{
+  "criteria": {
+    "right_click": {
+      "trigger": "minecraft:consume_item",
+      "conditions": {
+        "item": {
+          "items": "minecraft:nether_star",
+          "count": {
+            "min": 1,
+            "max": 64
+          },
+          "predicates": {
+            "minecraft:custom_data": "{ComfigUI:1b}"
+          }
+        }
+      }
+    }
+  },
+  "rewards": {
+    "function": "gulce_adminpower_addons:config"
+  }
+}
