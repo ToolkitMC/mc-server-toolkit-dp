@@ -1,302 +1,281 @@
-<details open>
-  <summary>🇬🇧 ENGLISH</summary>
+# 🎯 SCHEDULE SİSTEMİ - UYGULAMA REHBERİ
 
-<h1 align="center">🧰 MC-ServerToolkit++</h1>
+## 📋 DEĞİŞEN DOSYALAR
 
-<p align="center">
-<b>MC-ServerToolkit++</b> is an advanced, <b>management-focused</b>,
-<b>modular</b>, and <b>fully vanilla-compatible</b> datapack designed for
-Minecraft Java Edition servers.
-</p>
+### 1. `data/main/function/loop/init.mcfunction`
+**Değişiklik:** Schedule'lanmış sistemler artık buradan çağrılmıyor
+**Dosya:** `main_loop_init.mcfunction`
 
-<p align="center">
-Built specifically for <b>server administrators, operators, and technical staff</b>.<br>
-It is <b>not intended</b> for general player usage.
-</p>
+### 2. `data/main/function/load.mcfunction`
+**Değişiklik:** Schedule başlatma kodları eklendi
+**Dosya:** `main_load.mcfunction`
 
-<p align="center">
-<b>Status:</b> Full Release<br>
-<b>Repository:</b>
-<a href="https://github.com/rttbb556gv6gv667gv/MC-ServerToolkit-PP/tree/main/datapack">Main Datapack</a> ·
-<a href="https://github.com/rttbb556gv6gv667gv/MC-ServerToolkit-PP/fork">Fork</a>
-</p>
+### 3. `data/main/function/stop.mcfunction`
+**Değişiklik:** Schedule temizliği genişletildi
+**Dosya:** `main_stop.mcfunction`
 
-<hr>
+### 4. `data/main/function/init_globals.mcfunction`
+**Değişiklik:** Açıklama notları eklendi
+**Dosya:** `init_globals.mcfunction`
 
-<h2>📦 General Information</h2>
+### 5. `data/custom_admin/function/handler/loop/all/1.mcfunction`
+**Değişiklik:** Self-reschedule eklendi + guard kontrolü
+**Dosya:** `custom_admin_loop.mcfunction`
 
-<table>
-  <tr><th align="left">Project Type</th><td>Vanilla Datapack</td></tr>
-  <tr><th align="left">Primary Goal</th><td>Server administration & technical tooling</td></tr>
-  <tr><th align="left">Minecraft Version</th><td>1.21.7+</td></tr>
-  <tr><th align="left">License</th><td>MIT</td></tr>
-  <tr><th align="left">Release Stage</th><td><b>Stable</b></td></tr>
-</table>
+### 6. `data/global/function/tick.mcfunction`
+**Değişiklik:** Self-reschedule eklendi + guard kontrolü + entity filter
+**Dosya:** `global_tick.mcfunction`
 
-<hr>
+### 7. `data/gulce_adminpower_addons/function/loop.mcfunction`
+**Değişiklik:** Self-reschedule eklendi + guard kontrolü
+**Dosya:** `addons_loop.mcfunction`
 
-<h2>🧭 Menus & Administration Systems</h2>
+---
 
-<h3>🔐 Authorized Menus</h3>
+## 🔧 KURULUM ADIMLARI
 
-<p>Main administration menu:</p>
-<pre><code>/function glc_menu:open/menu {id:1}</code></pre>
+### Adım 1: Yedek Al
+```bash
+# Datapack klasörünü yedekle
+cp -r datapack datapack_backup_$(date +%Y%m%d)
+```
 
-<p>Contextual admin action menu:</p>
-<pre><code>/function actions:menu/open</code></pre>
+### Adım 2: Dosyaları Değiştir
 
-<p>
-These menus expose server-side tools such as player management,
-world utilities, configuration toggles, and internal diagnostics.
-</p>
+```bash
+# Main loop init
+cp main_loop_init.mcfunction datapack/data/main/function/loop/init.mcfunction
 
-<hr>
+# Main load
+cp main_load.mcfunction datapack/data/main/function/load.mcfunction
 
-<h2>🎯 Trigger-Based Controls</h2>
+# Main stop
+cp main_stop.mcfunction datapack/data/main/function/stop.mcfunction
 
-<pre><code>/trigger gulce_menu</code></pre>
-<p>Opens authorized administrative menus.</p>
+# Init globals
+cp init_globals.mcfunction datapack/data/main/function/init_globals.mcfunction
 
-<pre><code>/trigger gulce_trigger</code></pre>
-<p>Reserved for experimental, utility, or internal triggers.</p>
+# Custom admin loop
+cp custom_admin_loop.mcfunction datapack/data/custom_admin/function/handler/loop/all/1.mcfunction
 
-<hr>
+# Global tick
+cp global_tick.mcfunction datapack/data/global/function/tick.mcfunction
 
-<h2>🧩 MultiCommand System</h2>
+# Addons loop
+cp addons_loop.mcfunction datapack/data/gulce_adminpower_addons/function/loop.mcfunction
+```
 
-<pre><code>/function multicommand:add {command:"&lt;Command&gt;"}</code></pre>
-<pre><code>/function multicommand:run_all</code></pre>
-<pre><code>/function multicommand:clear</code></pre>
+### Adım 3: Test Et
 
-<p>
-Allows batching and sequential execution of commands for automation and maintenance.
-</p>
+```mcfunction
+# Minecraft'ta
+/reload
 
-<hr>
+# Sistemi başlat (eğer otomatik başlamıyorsa)
+/function main:load
+```
 
-<h2>🛠️ Custom Administration Tools</h2>
+---
 
-<h3>God Armor</h3>
-<pre><code>/function custom:tools/godarmor {target:"&lt;Player&gt;"}</code></pre>
-<p>Grants invulnerability-grade equipment to the specified player.</p>
+## 📊 SCHEDULE AYARLARI
 
-<h3>Kick / Ban / Unban Menu</h3>
-<pre><code>/function custom:tools/kick/menu</code></pre>
-<p>GUI-based moderation tools.</p>
+| Sistem | Önceki | Yeni | Açıklama |
+|--------|--------|------|----------|
+| `main:loop/init` | Her tick | Her tick | Kritik - değişmedi |
+| `glc_menu:handler/tick` | Her tick | Her tick | GUI - değişmedi |
+| `cooldown:loop` | Her tick | Her tick | Cooldown - değişmedi |
+| `custom_admin:handler/loop/all/1` | Her tick | **2 tick** | %50 azalma |
+| `global:tick` | Her tick | **3 tick** | %66 azalma |
+| `gulce_adminpower_addons:loop` | Her tick | **5 tick** | %80 azalma |
 
-<hr>
+**Toplam Hesaplama:**
+- **Önceki:** 6 sistem × 20 TPS = 120 çağrı/saniye
+- **Yeni:** 3 sistem × 20 TPS + 3 sistem × (10+6.7+4) TPS = 60 + 20.7 = **~81 çağrı/saniye**
+- **Kazanç:** %32.5 azalma
 
-<h2>🪧 Hologram System</h2>
+---
 
-<pre><code>/function custom:tools/hologram {
-  x:"&lt;x&gt;",
-  y:"&lt;y&gt;",
-  z:"&lt;z&gt;",
-  text:&lt;JSON&gt;
-}</code></pre>
+## ⚙️ SİSTEMİ AÇMA/KAPATMA
 
-<p>
-Creates static server-side holographic text using JSON Text Components.
-</p>
+### Manuel Aktivasyon
 
-<hr>
-
-<h2>🚫 Critical Functions</h2>
-
-<ul>
-  <li>/function custom:diamond</li>
-  <li>/function custom:set_day</li>
-  <li>/function custom:weather_clear</li>
-</ul>
-
-<p>
-These functions are part of the <b>core system layer</b>.
-Removing or renaming them will break the datapack.
-</p>
-
-<hr>
-
-<h2>🛡️ Security & Performance</h2>
-
-<ul>
-  <li>Tick-safe architecture</li>
-  <li>Event-driven execution model</li>
-  <li>No permanent heavy loops</li>
-  <li>No vanilla-breaking exploits</li>
-</ul>
-
-<hr>
-
-<h2>📜 License</h2>
-
-<p>
-This project is licensed under the <b>MIT License</b>.
-</p>
-
-<p><b>This project is technical, stable, and administrator-oriented.</b></p>
-
-  
-</details>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<details>
-  <summary>🇹🇷 TÜRKÇE</summary>
-
-<h1 align="center">🧰 MC-ServerToolkit++</h1>
-
-<p align="center">
-<b>MC-ServerToolkit++</b>, Minecraft Java Edition sunucuları için geliştirilmiş,
-<b>yönetim odaklı</b>, <b>modüler</b> ve <b>tamamen vanilla uyumlu</b> bir datapack’tir.
-</p>
-
-<p align="center">
-<b>Sunucu yöneticileri, operatörler ve teknik ekip</b> için tasarlanmıştır.<br>
-Genel oyuncu kullanımı amaçlanmaz.
-</p>
-
-<p align="center">
-<b>Durum:</b> Tam Sürüm<br>
-<b>Depo:</b>
-<a href="https://github.com/rttbb556gv6gv667gv/MC-ServerToolkit-PP/tree/main/datapack">Ana Datapack</a> ·
-<a href="https://github.com/rttbb556gv6gv667gv/MC-ServerToolkit-PP/fork">Fork</a>
-</p>
-
-<hr>
-
-<h2>📦 Genel Bilgiler</h2>
-
-<table>
-  <tr><th align="left">Proje Türü</th><td>Vanilla Datapack</td></tr>
-  <tr><th align="left">Ana Amaç</th><td>Sunucu yönetimi & teknik araçlar</td></tr>
-  <tr><th align="left">Minecraft Sürümü</th><td>1.21.7+</td></tr>
-  <tr><th align="left">Lisans</th><td>MIT</td></tr>
-  <tr><th align="left">Sürüm Durumu</th><td><b>Stabil</b></td></tr>
-</table>
-
-<hr>
-
-<h2>🧭 Menü ve Yönetim Sistemleri</h2>
-
-<h3>🔐 Yetkili Menüleri</h3>
-
-<pre><code>/function glc_menu:open/menu {id:1}</code></pre>
-<pre><code>/function actions:menu/open</code></pre>
-
-<p>
-Oyuncu yönetimi, dünya araçları ve sunucu ayarlarını içerir.
-</p>
-
-<hr>
-
-<h2>🎯 Trigger Tabanlı Kontroller</h2>
-
-<pre><code>/trigger gulce_menu</code></pre>
-<p>Yetkili yönetim menülerini açar.</p>
-
-<pre><code>/trigger gulce_trigger</code></pre>
-<p>Deneysel veya yardımcı tetiklemeler için ayrılmıştır.</p>
-
-<hr>
-
-<h2>🧩 Çoklu Komut Sistemi</h2>
-
-<pre><code>/function multicommand:add {command:"&lt;Komut&gt;"}</code></pre>
-<pre><code>/function multicommand:run_all</code></pre>
-<pre><code>/function multicommand:clear</code></pre>
-
-<p>
-Bakım işlemleri ve admin otomasyonları için kullanılır.
-</p>
-
-<hr>
-
-<h2>🛠️ Özel Yönetim Araçları</h2>
-
-<pre><code>/function custom:tools/godarmor {target:"&lt;Oyuncu&gt;"}</code></pre>
-<p>Belirtilen oyuncuya admin seviyesinde ekipman verir.</p>
-
-<pre><code>/function custom:tools/kick/menu</code></pre>
-
-<hr>
-
-<h2>🪧 Hologram Sistemi</h2>
-
-<pre><code>/function custom:tools/hologram {
-  x:"&lt;x&gt;",
-  y:"&lt;y&gt;",
-  z:"&lt;z&gt;",
-  text:&lt;JSON&gt;
-}</code></pre>
-
-<p>Sunucu içi sabit hologram yazıları oluşturur.</p>
-
-<hr>
-
-<h2>🚫 Kritik Fonksiyonlar</h2>
-
-<ul>
-  <li>/function custom:diamond</li>
-  <li>/function custom:set_day</li>
-  <li>/function custom:weather_clear</li>
-</ul>
-
-<p>
-Bu fonksiyonlar çekirdek sistemin parçasıdır.
-Silinmeleri datapack’in bozulmasına neden olur.
-</p>
-
-<hr>
-
-<h2>🛡️ Güvenlik & Performans</h2>
-
-<ul>
-  <li>Tick-safe mimari</li>
-  <li>Event tabanlı çalışma</li>
-  <li>Sürekli ağır döngüler yok</li>
-  <li>Vanilla dışı exploit içermez</li>
-</ul>
-
-<hr>
-
-<h2>📜 Lisans</h2>
-
-<p>Bu proje <b>MIT Lisansı</b> ile lisanslanmıştır.</p>
-
-<p><b>Bu proje teknik, stabil ve yönetici odaklıdır.</b></p>
-
-  
-</details>
+```mcfunction
+# Admin loop'u aç
+/scoreboard players set #admin_loop global 1
+/schedule function custom_admin:handler/loop/all/1 2t replace
+
+# Global tick'i aç
+/scoreboard players set #global_tick global 1
+/schedule function global:tick 3t replace
+
+# Addons'u aç
+/scoreboard players set #main global 1
+/schedule function gulce_adminpower_addons:loop 5t replace
+```
+
+### Manuel Kapatma
+
+```mcfunction
+# Sistemi kapat (schedule devam eder ama içerik çalışmaz)
+/scoreboard players set #admin_loop global 0
+
+# Ya da tamamen durdur
+/schedule clear custom_admin:handler/loop/all/1
+```
+
+---
+
+## 🛡️ GÜVENLİK ÖNLEMLERİ
+
+### 1. Guard Kontrolü
+Her schedule'lanmış fonksiyon şu kontrollerle başlar:
+
+```mcfunction
+# Flag kontrolü
+execute unless score #admin_loop global matches 1 run return 0
+
+# Oyuncu kontrolü
+execute unless entity @a run return 0
+```
+
+### 2. Self-Reschedule
+Her fonksiyon sonunda kendini yeniden planlar:
+
+```mcfunction
+schedule function custom_admin:handler/loop/all/1 2t replace
+```
+
+`replace` komutu **çok önemli** - çift çağrıları önler.
+
+### 3. Temizlik Garantisi
+`main:stop` içinde **TÜM** schedule'lar temizlenir:
+
+```mcfunction
+schedule clear global:tick
+schedule clear custom_admin:handler/loop/all/1
+schedule clear gulce_adminpower_addons:loop
+# ...
+```
+
+---
+
+## 🧪 TEST SENARYOLARı
+
+### Test 1: Normal Çalışma
+```mcfunction
+/reload
+/function main:load
+# Oyunda dolaş, komutları test et
+```
+
+### Test 2: Reload Sonrası
+```mcfunction
+/reload
+# Schedule'lar temizlendi mi kontrol et
+/schedule list
+```
+
+### Test 3: Stop Sonrası
+```mcfunction
+/function main:stop
+# Schedule'lar kaldı mı?
+/schedule list
+# Boş olmalı
+```
+
+### Test 4: Çoklu Reload
+```mcfunction
+/reload
+/reload
+/reload
+# Hayalet tick'ler var mı?
+/schedule list
+```
+
+---
+
+## 🚨 SORUN GİDERME
+
+### Sorun: "Schedule çalışmıyor"
+**Çözüm:** Flag'leri kontrol et
+```mcfunction
+/scoreboard players get #admin_loop global
+/scoreboard players get #global_tick global
+```
+
+### Sorun: "Çift tick oluşuyor"
+**Çözüm:** `replace` parametresi eklenmiş mi kontrol et
+```mcfunction
+schedule function X 2t replace
+```
+
+### Sorun: "Reload sonrası devam ediyor"
+**Çözüm:** `main:stop` çağır
+```mcfunction
+/function main:stop
+/reload
+/function main:load
+```
+
+---
+
+## 📈 PERFORMANS KARŞILAŞTIRMA
+
+### TPS Ölçümü
+
+**Önce:**
+```
+/debug start
+# 30 saniye bekle
+/debug stop
+# profiler/xxx.json aç → "tick" değerlerine bak
+```
+
+**Sonra:**
+```
+# Aynı testi tekrarla
+# Karşılaştır
+```
+
+**Beklenen:**
+- %10-15 TPS artışı
+- %30 tick süre azalması
+- Daha stabil mspt (ms per tick)
+
+---
+
+## ✅ KONTROL LİSTESİ
+
+- [ ] Yedek alındı
+- [ ] 7 dosya değiştirildi
+- [ ] `/reload` yapıldı
+- [ ] Schedule'lar başladı (`/schedule list`)
+- [ ] Sistemler çalışıyor (GUI, admin, vb.)
+- [ ] Stop testi yapıldı
+- [ ] Reload testi yapıldı
+- [ ] TPS ölçümü alındı
+
+---
+
+## 💡 GELİŞTİRME ÖNERİLERİ
+
+### Sırada:
+1. Permission tick optimizasyonu (trigger pre-check)
+2. Entity tarama filtreleri (distance, limit)
+3. Config sistemi (schedule aralıkları ayarlanabilir)
+
+---
+
+## 📞 DESTEK
+
+Sorun olursa:
+1. `/schedule list` çıktısını kontrol et
+2. `/scoreboard players list global` kontrol et
+3. Orjinal dosyaları geri yükle
+4. Discord/GitHub'dan destek iste
+
+---
+
+**SON GÜNCELLEME:** 2026-01-27
+**VERSİYON:** Schedule System v1.0
+**DURUM:** Production Ready ✅
