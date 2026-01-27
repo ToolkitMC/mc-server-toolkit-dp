@@ -1,0 +1,175 @@
+{
+  "type": "minecraft:multi_action",
+  "title": "⚙️ Gulce AdminPower – Global Konfigürasyon",
+  "body": {
+    "type": "minecraft:plain_message",
+    "contents": "Tüm sistem ayarlarını buradan yapılandırabilir ve uygulayabilirsin."
+  },
+  "inputs": [
+    {
+      "type": "minecraft:number_range",
+      "key": "load_second",
+      "label": "Yükleme Süresi (saniye)",
+      "start": 1,
+      "end": 10000,
+      "step": 1,
+      "initial": 50
+    },
+    {
+      "type": "minecraft:single_option",
+      "key": "diamond_to_emerald_recipe",
+      "label": "Elmas → Zümrüt Tarif Modu",
+      "options": [
+        {
+          "id": "take",
+          "display": "Kapalı"
+        },
+        {
+          "id": "give",
+          "display": "Açık"
+        }
+      ]
+    },
+    {
+      "type": "minecraft:single_option",
+      "key": "level",
+      "label": "İzin Seviyesi",
+      "options": [
+        {
+          "id": "1"
+        },
+        {
+          "id": "2"
+        },
+        {
+          "id": "3"
+        },
+        {
+          "id": "4"
+        },
+        {
+          "id": "5"
+        }
+      ]
+    },
+    {
+      "type": "minecraft:single_option",
+      "key": "1",
+      "label": "GLC Menu",
+      "options": [
+        {
+          "id": "1",
+          "display": "Açık"
+        },
+        {
+          "id": "0",
+          "display": "Kapalı"
+        }
+      ]
+    },
+    {
+      "type": "minecraft:single_option",
+      "key": "2",
+      "label": "Admin Loop",
+      "options": [
+        {
+          "id": "1",
+          "display": "Açık"
+        },
+        {
+          "id": "0",
+          "display": "Kapalı"
+        }
+      ]
+    },
+    {
+      "type": "minecraft:single_option",
+      "key": "3",
+      "label": "Tick Control",
+      "options": [
+        {
+          "id": "1",
+          "display": "Açık"
+        },
+        {
+          "id": "0",
+          "display": "Kapalı"
+        }
+      ]
+    },
+    {
+      "type": "minecraft:single_option",
+      "key": "4",
+      "label": "Cooldown",
+      "options": [
+        {
+          "id": "1",
+          "display": "Açık"
+        },
+        {
+          "id": "0",
+          "display": "Kapalı"
+        }
+      ]
+    },
+    {
+      "type": "minecraft:single_option",
+      "key": "5",
+      "label": "Main Loop",
+      "options": [
+        {
+          "id": "1",
+          "display": "Açık"
+        },
+        {
+          "id": "0",
+          "display": "Kapalı"
+        }
+      ]
+    }
+  ],
+  "can_close_with_escape": true,
+  "pause": false,
+  "after_action": "none",
+  "columns": 3,
+  "actions": [
+    {
+      "label": "Konfigürasyonu Yükle",
+      "tooltip": "Süre ve tarif ayarlarını yükler",
+      "width": 119,
+      "action": {
+        "type": "minecraft:dynamic/run_command",
+        "template": "/function gulce_adminpower_addons:config/load {\"load_second\":\"$(load_second)\",\"diamond_to_emerald_recipe\":\"$(diamond_to_emerald_recipe)\",\"level\":$(level)}"
+      }
+    },
+    {
+      "label": "Global Ayarları Uygula",
+      "tooltip": "Loop ve sistem bayraklarını uygular",
+      "width": 119,
+      "action": {
+        "type": "minecraft:dynamic/run_command",
+        "template": "/function main:set_globals {\"glc_menu\":$(1),\"admin_loop\":$(2),\"tick\":$(3),\"cooldown\":$(4),\"main\":$(5)}"
+      }
+    },
+    {
+      "label": "Kapat",
+      "width": 119,
+      "action": {
+        "type": "minecraft:run_command",
+        "command": "/dialog clear @s"
+      }
+    },
+    {
+      "label": {
+        "text": "Devre dışı bırak...",
+        "color": "gold",
+        "bold": true,
+        "italic": false
+      },
+      "action": {
+        "type": "minecraft:run_command",
+        "command": "/function vc_experimental:disable_all"
+      }
+    }
+  ]
+}
