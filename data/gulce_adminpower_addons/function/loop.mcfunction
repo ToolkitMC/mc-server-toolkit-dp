@@ -29,4 +29,4 @@ function custom:freeze_handler
 # ─────────────────────────────
 # SELF-RESCHEDULE (ÖNEMLİ!)
 # ─────────────────────────────
-schedule function gulce_adminpower_addons:loop 5t replace
+execute if data storage mc:config {Config:{Enabled:1b}} if score #main global matches 1 run schedule function gulce_adminpower_addons:loop 5t replace
