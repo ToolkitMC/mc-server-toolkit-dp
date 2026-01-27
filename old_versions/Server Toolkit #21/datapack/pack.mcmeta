@@ -1,0 +1,25 @@
+{
+  "pack": {
+    "pack_format": 94,
+    "description": "VanillaControl by Legends11",
+    "supported_formats": [
+      81,
+      95
+    ],
+    "min_format": 81,
+    "max_format": 95
+  },
+  "overlays": {
+    "entries": [
+      {
+        "directory": "addons",
+        "formats": [
+          81,
+          95
+        ],
+        "min_format": 81,
+        "max_format": 95
+      }
+    ]
+  }
+}
