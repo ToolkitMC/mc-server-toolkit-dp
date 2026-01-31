@@ -1,2 +1,0 @@
-$forceload add $(x) $(z)
-$return run tellraw @s [{"text":"[Forceload]","color":"green","bold":true},{"text":":","color":"dark_gray"},{"text":"Eklendi","color":"gold"}," ",{"text":"→","color":"gray"}," ",{"text":"X=","color":"aqua"},{"text":"$(x)","color":"yellow","bold":true},{"text":" | ","color":"dark_gray"},{"text":"Z=","color":"aqua"},{"text":"$(z)","color":"yellow","bold":true}]
