@@ -5,10 +5,13 @@
 Bu paket, Minecraft datapack'iniz için tamamen yenilenmiş bir izin sistemi içerir:
 
 ### 📁 Dosyalar
-1. **datapack/** - Geliştirilmiş datapack (187 KB) (Klasör)
-3. **PERMISSIONS_GUIDE.md** - Tam dokümantasyon (8 KB)
-4. **QUICK_START.md** - Hızlı başlangıç rehberi (4.8 KB)
-5. **CHANGELOG.md** - Detaylı değişiklik listesi (5.7 KB)
+1. **datapack.zip** - Geliştirilmiş datapack (187 KB)
+2. **PERMISSIONS_GUIDE.md** - Tam dokümantasyon (8 KB)
+3. **QUICK_START.md** - Hızlı başlangıç rehberi (4.8 KB)
+4. **CHANGELOG.md** - Detaylı değişiklik listesi (5.7 KB)
+
+### 📥 İndirme Linki
+**Google Drive**: [v2.3/datapack/](https://drive.google.com/drive/folders/1oJgBP-2PfJ7fsLvUNB-3dNx1ZdE13lqw?usp=sharing)
 
 ---
 
@@ -16,7 +19,7 @@ Bu paket, Minecraft datapack'iniz için tamamen yenilenmiş bir izin sistemi iç
 
 ### 1. ZIP'i İndir ve Yükle
 ```
-1. datapack_improved.zip indir
+1. Google Drive'dan datapack.zip indir
 2. .minecraft/saves/DUNYA_ADI/datapacks/ klasörüne kopyala
 3. Oyunda /reload yaz
 ```
@@ -212,8 +215,9 @@ datapacks/
 ### Komut Çalışmıyor
 ```mcfunction
 1. /reload
-2. /tag @s (kontrolü)
+2. /tag @s list (kontrolü)
 3. /scoreboard players enable @s [trigger]
+4. /trigger [trigger] set [x]
 ```
 
 ### İzinler Kayboldu
@@ -223,7 +227,7 @@ datapacks/
 
 ### Debug Modu
 ```mcfunction
-/scoreboard players set @s ap_debug 1
+/trigger ap_debug set 1
 ```
 
 ---
