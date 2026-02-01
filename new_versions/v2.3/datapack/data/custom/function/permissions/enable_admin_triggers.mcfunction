@@ -24,6 +24,7 @@ scoreboard players enable @a[tag=op] ap_test
 scoreboard players enable @a[tag=op] ap_xyz
 scoreboard players enable @a[tag=op] ap_clear
 scoreboard players enable @a[tag=op] ap_freezeAll
+scoreboard players enable @a[tag=op] ap_unfreezeAll
 scoreboard players enable @a[tag=op] ap_fly
 scoreboard players enable @a[tag=op] ap_invis
 scoreboard players enable @a[tag=op] ap_night_vision
