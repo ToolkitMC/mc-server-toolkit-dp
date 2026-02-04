@@ -1,0 +1,1 @@
+$function cooldown2:execute/action {id:"@s",file:"$(function)",arguments:$(params)}

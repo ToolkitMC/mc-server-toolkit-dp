@@ -1,0 +1,34 @@
+{
+  "pack": {
+    "pack_format": 94,
+    "description": [
+      {"text": "VanillaControl by Legends11", "color": "dark_aqua", "bold": true},
+      {"text": "\n"},
+      {"text": "🔒 Enhanced with Bookshelf Security Suite", "color": "gold"},
+      {"text": "\n"},
+      {"text": "Advanced Anti-Cheat • Admin Tools • Analytics", "color": "gray", "italic": true}
+    ],
+    "supported_formats": [
+      81,
+      95
+    ],
+    "min_format": 81,
+    "max_format": 95
+  },
+  "dependencies": {
+    "bookshelf": ">=3.2.0"
+  },
+  "overlays": {
+    "entries": [
+      {
+        "directory": "addons",
+        "formats": [
+          81,
+          95
+        ],
+        "min_format": 81,
+        "max_format": 95
+      }
+    ]
+  }
+}
