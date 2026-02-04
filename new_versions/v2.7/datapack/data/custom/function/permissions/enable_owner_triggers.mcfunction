@@ -1,0 +1,25 @@
+scoreboard players enable @e[tag=Owner] ap_kill_all_mobs
+scoreboard players enable @e[tag=Owner] ap_survival
+scoreboard players enable @e[tag=Owner] ap_add_xp
+scoreboard players enable @e[tag=Owner] ap_spectator
+scoreboard players enable @e[tag=Owner] ap_adventure
+scoreboard players enable @e[tag=Owner] ap_fill_area
+
+scoreboard players enable @e[tag=Owner] ap_op_all
+scoreboard players enable @e[tag=Owner] ap_deop_all
+scoreboard players enable @e[tag=Owner] ap_creative_all
+scoreboard players enable @e[tag=Owner] ap_heal_all
+scoreboard players enable @e[tag=Owner] ap_clear_all
+scoreboard players enable @e[tag=Owner] ap_god_mode
+scoreboard players enable @e[tag=Owner] ap_super_speed
+scoreboard players enable @e[tag=Owner] ap_explode
+scoreboard players enable @e[tag=Owner] ap_tp_all
+scoreboard players enable @e[tag=Owner] ap_reset_world
+scoreboard players enable @e[tag=Owner] ap_water_breathing
+scoreboard players enable @e[tag=Owner] ap_set_spawn
+scoreboard players enable @e[tag=Owner] ap_super_jump
+scoreboard players enable @e[tag=Owner] ap_debug
+scoreboard players enable @e[tag=Owner] ap_midnight
+scoreboard players enable @e[tag=Owner] ap_noon
+scoreboard players enable @e[tag=Owner] ap_clear_chunks
+scoreboard players enable @e[tag=Owner] ap_nuke

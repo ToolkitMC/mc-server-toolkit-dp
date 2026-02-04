@@ -1,0 +1,72 @@
+{
+  "type": "minecraft:notice",
+  "title": "⚠ Experimental Zone",
+  "body": [
+    {
+      "type": "minecraft:plain_message",
+      "contents": {
+        "type": "text",
+        "text": "Uyarı:",
+        "color": "yellow",
+        "bold": true,
+        "italic": false,
+        "extra": [
+          "\n\n",
+          {
+            "type": "text",
+            "text": "Bu bölüm deneysel özellikler içerir ve aktif geliştirme aşamasındadır.\n",
+            "color": "white",
+            "bold": false
+          },
+          {
+            "type": "text",
+            "text": "Buradaki sistemler tam olarak test edilmemiş olabilir; davranışlar sürümden sürüme değişebilir, beklenmeyen sonuçlar ortaya çıkabilir.\n\n",
+            "color": "white"
+          },
+          {
+            "type": "text",
+            "text": "• Stabilite garanti edilmez\n• Vanilla sınırları zorlanabilir\n• Bazı özellikler çalışmayabilir veya aşırı iyi çalışabilir\n\n",
+            "color": "gray"
+          },
+          {
+            "type": "text",
+            "text": "Kısaca:\n",
+            "color": "white",
+            "bold": true
+          },
+          {
+            "type": "text",
+            "text": "Çalışıyorsa şanslısınız.\n",
+            "color": "green"
+          },
+          {
+            "type": "text",
+            "text": "Bozuluyorsa bu bir hata değil, potansiyel bir feature’dır.\n\n",
+            "color": "red"
+          },
+          {
+            "type": "text",
+            "text": "Devam ederek; garip davranışları, mantık dışı sonuçları ve olası dünya dengesizliklerini bilerek kabul etmiş olursunuz.\n",
+            "color": "white"
+          },
+          {
+            "type": "text",
+            "text": "Kaydetmeden önce düşünmeniz, kullanırken gülmeniz tavsiye edilir.",
+            "color": "dark_gray",
+            "italic": true
+          }
+        ]
+      }
+    }
+  ],
+  "can_close_with_escape": true,
+  "pause": false,
+  "after_action": "close",
+  "action": {
+    "label": "Kapat",
+    "action": {
+      "type": "minecraft:suggest_command",
+      "command": " "
+    }
+  }
+}
