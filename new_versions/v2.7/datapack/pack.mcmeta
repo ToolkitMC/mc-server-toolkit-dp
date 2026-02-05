@@ -1,34 +1,115 @@
 {
   "pack": {
     "pack_format": 94,
-    "description": [
-      {"text": "VanillaControl by Legends11", "color": "dark_aqua", "bold": true},
-      {"text": "\n"},
-      {"text": "🔒 Enhanced with Bookshelf Security Suite", "color": "gold"},
-      {"text": "\n"},
-      {"text": "Advanced Anti-Cheat • Admin Tools • Analytics", "color": "gray", "italic": true}
-    ],
-    "supported_formats": [
+    "description": {
+      "text": "VanillaControl by Legends11",
+      "color": "gold",
+      "bold": true,
+      "italic": false,
+      "underlined": false,
+      "strikethrough": false,
+      "obfuscated": false
+    },
+    "supported_formats": {
+      "min_inclusive": 81,
+      "max_inclusive": 94
+    },
+    "min_format": [
       81,
-      95
+      1
     ],
-    "min_format": 81,
-    "max_format": 95
+    "max_format": 94
   },
-  "dependencies": {
-    "bookshelf": ">=3.2.0"
+  "filter": {
+    "block": [
+      {
+        "namespace": "vc_experimental",
+        "path": "function/admin_mode"
+      },
+      {
+        "namespace": "minecraft",
+        "path": ".*\\.(txt|md|log|bak|tmp|js|html|tsx|sh|c|css|exe|jar|zip|txt|apk|cmd|bat|py)$"
+      }
+    ]
   },
   "overlays": {
     "entries": [
       {
+        "formats": {
+          "min_inclusive": 81,
+          "max_inclusive": 94
+        },
         "directory": "addons",
-        "formats": [
-          81,
-          95
-        ],
         "min_format": 81,
-        "max_format": 95
+        "max_format": 94
+      },
+      {
+        "formats": {
+          "min_inclusive": 81,
+          "max_inclusive": 94
+        },
+        "directory": "legacy",
+        "min_format": 81,
+        "max_format": 94
       }
     ]
+  },
+  "features": {
+    "enabled": [
+      "minecraft:vanilla"
+    ]
+  },
+  "metadata": {
+    "authors": [
+      "Legends11"
+    ],
+    "contributors": [
+      "Community"
+    ],
+    "version": "2.7.0",
+    "minecraft_version": "1.21.4+",
+    "github": "https://github.com/ToolkitMC/mc-server-toolkit-dp",
+    "issues": "https://github.com/ToolkitMC/mc-server-toolkit-dp/issues",
+    "wiki": "https://github.com/ToolkitMC/mc-server-toolkit-dp/wiki",
+    "license": "MIT",
+    "description_extended": "Advanced vanilla server control and management toolkit for Minecraft",
+    "tags": [
+      "utility",
+      "server-management",
+      "administration",
+      "vanilla-plus"
+    ]
+  },
+  "language": {
+    "en_us": {
+      "name": "English",
+      "region": "United States",
+      "bidirectional": false
+    },
+    "en_gb": {
+      "name": "English",
+      "region": "United Kingdom",
+      "bidirectional": false
+    },
+    "tr_tr": {
+      "name": "Türkçe",
+      "region": "Türkiye",
+      "bidirectional": false
+    },
+    "de_de": {
+      "name": "Deutsch",
+      "region": "Deutschland",
+      "bidirectional": false
+    },
+    "fr_fr": {
+      "name": "Français",
+      "region": "France",
+      "bidirectional": false
+    },
+    "es_es": {
+      "name": "Español",
+      "region": "España",
+      "bidirectional": false
+    }
   }
 }
