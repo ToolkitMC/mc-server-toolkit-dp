@@ -111,23 +111,22 @@ jobs:
           fi
 
       # ─────────────────────────────
-      # PACK.MCMETA VALIDATION (1.21)
+      # PACK.MCMETA VALIDATION
       # ─────────────────────────────
-      - name: Validate pack.mcmeta Files (MC 1.21)
+      - name: Validate pack.mcmeta Files
         run: |
           echo ""
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "📦 Validating pack.mcmeta Files (MC 1.21)..."
+          echo "📦 Validating pack.mcmeta Files..."
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           
           found=0
           error=0
           warnings=0
 
-          # MC 1.21 uses pack_format 48
-          EXPECTED_PACK_FORMAT=48
-          MIN_PACK_FORMAT=41  # MC 1.20.5
-          MAX_PACK_FORMAT=48  # MC 1.21
+          # Geçerli pack format değerleri
+          VALID_FORMATS=(81 88 94)
+          INVALID_THRESHOLD=80
 
           while IFS= read -r -d $'\0' file; do
             found=1
@@ -141,19 +140,37 @@ jobs:
               pack_format=$(jq -r '.pack.pack_format' "$file")
               echo "    ℹ️  Pack format: $pack_format"
               
-              # Validate pack_format for MC 1.21
-              if [ "$pack_format" -eq "$EXPECTED_PACK_FORMAT" ]; then
-                echo "    ✅ Correct for MC 1.21 (pack_format: 48)"
-              elif [ "$pack_format" -ge "$MIN_PACK_FORMAT" ] && [ "$pack_format" -lt "$MAX_PACK_FORMAT" ]; then
-                echo "    ⚠️  Pack format $pack_format is for older version (MC 1.21 uses 48)"
-                warnings=$((warnings + 1))
-              elif [ "$pack_format" -gt "$MAX_PACK_FORMAT" ]; then
-                echo "    ⚠️  Pack format $pack_format is for newer version (MC 1.21 uses 48)"
-                warnings=$((warnings + 1))
-              else
-                echo "    ❌ Invalid pack_format: $pack_format (MC 1.21 expects 48)"
+              # Pack format kontrolü
+              is_valid=0
+              for valid_format in "${VALID_FORMATS[@]}"; do
+                if [ "$pack_format" -eq "$valid_format" ]; then
+                  is_valid=1
+                  break
+                fi
+              done
+
+              if [ $is_valid -eq 1 ]; then
+                case $pack_format in
+                  81)
+                    echo "    ✅ Valid pack format: 81"
+                    ;;
+                  88)
+                    echo "    ✅ Valid pack format: 88"
+                    ;;
+                  94)
+                    echo "    ✅ Valid pack format: 94"
+                    ;;
+                esac
+              elif [ "$pack_format" -le "$INVALID_THRESHOLD" ]; then
+                echo "    ❌ Invalid/Incompatible pack format: $pack_format (must be 81, 88, or 94)"
                 error=1
+              else
+                echo "    ⚠️  Unknown pack format: $pack_format (expected: 81, 88, or 94)"
+                warnings=$((warnings + 1))
               fi
+
+              # Pack format bilgilerini kaydet (mcfunction kontrolü için)
+              echo "$pack_format" > "/tmp/pack_format_$(basename $(dirname $file)).txt"
             fi
 
             # Required: pack.description
@@ -165,40 +182,32 @@ jobs:
               echo "    ℹ️  Description: $description"
             fi
 
-            # Check for supported_formats (1.20.2+)
+            # Check for supported_formats
             if jq -e '.pack.supported_formats' "$file" > /dev/null 2>&1; then
               supported=$(jq -r '.pack.supported_formats' "$file")
               echo "    ℹ️  Supported formats: $supported"
               
-              # Validate supported_formats for 1.21
-              if jq -e '.pack.supported_formats | if type == "array" then (. | index(48)) elif type == "object" then (.min_inclusive <= 48 and .max_inclusive >= 48) else false end' "$file" > /dev/null 2>&1; then
-                echo "    ✅ Supports MC 1.21 (format 48)"
-              else
-                echo "    ⚠️  May not support MC 1.21"
-                warnings=$((warnings + 1))
-              fi
+              # Validate supported_formats
+              for valid_format in "${VALID_FORMATS[@]}"; do
+                if jq -e ".pack.supported_formats | if type == \"array\" then (. | index($valid_format)) elif type == \"object\" then (.min_inclusive <= $valid_format and .max_inclusive >= $valid_format) else false end" "$file" > /dev/null 2>&1; then
+                  echo "    ✅ Supports pack format $valid_format"
+                fi
+              done
             fi
 
-            # Check for filter (1.20+)
+            # Check for filter
             if jq -e '.filter' "$file" > /dev/null 2>&1; then
               block_count=$(jq '.filter.block | length' "$file" 2>/dev/null || echo 0)
               echo "    ℹ️  Filter with $block_count block pattern(s)"
             fi
 
-            # Check for overlays (1.20+)
+            # Check for overlays
             if jq -e '.overlays' "$file" > /dev/null 2>&1; then
               overlay_count=$(jq '.overlays.entries | length' "$file")
               echo "    ℹ️  Has $overlay_count overlay(s)"
-              
-              # Validate overlay formats for 1.21
-              while IFS= read -r overlay_formats; do
-                if echo "$overlay_formats" | jq -e '. | index(48)' > /dev/null 2>&1; then
-                  echo "    ✅ Overlay supports MC 1.21"
-                fi
-              done < <(jq -c '.overlays.entries[].formats' "$file" 2>/dev/null)
             fi
 
-            # MC 1.21 specific features
+            # Check for features
             if jq -e '.features' "$file" > /dev/null 2>&1; then
               echo "    ℹ️  Has feature flags defined"
             fi
@@ -212,7 +221,7 @@ jobs:
           fi
 
           if [ $error -eq 0 ]; then
-            echo "✅ All pack.mcmeta files are valid for MC 1.21"
+            echo "✅ All pack.mcmeta files are valid"
             [ $warnings -gt 0 ] && echo "⚠️  $warnings warning(s) found"
           else
             echo "❌ pack.mcmeta validation failed"
@@ -220,13 +229,13 @@ jobs:
           fi
 
       # ─────────────────────────────
-      # DATAPACK STRUCTURE VALIDATION (1.21)
+      # DATAPACK STRUCTURE VALIDATION
       # ─────────────────────────────
-      - name: Validate Datapack Structure (MC 1.21)
+      - name: Validate Datapack Structure
         run: |
           echo ""
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "📁 Validating Datapack Structure (MC 1.21)..."
+          echo "📁 Validating Datapack Structure..."
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           
           error=0
@@ -245,10 +254,10 @@ jobs:
               echo "    ✅ data/ directory exists"
               
               # Count namespaces
-              namespace_count=$(find "$dir/data" -mindepth 1 -maxdepth 1 -type d | wc -l)
+              namespace_count=$(find "$dir/data" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
               echo "    ℹ️  Found $namespace_count namespace(s)"
 
-              # List namespaces and MC 1.21 features
+              # List namespaces
               if [ $namespace_count -gt 0 ]; then
                 while IFS= read -r namespace; do
                   ns_name=$(basename "$namespace")
@@ -269,18 +278,18 @@ jobs:
                   [ -d "$namespace/dimension" ] && echo "        ✓ dimension/"
                   [ -d "$namespace/dimension_type" ] && echo "        ✓ dimension_type/"
                   
-                  # MC 1.21 specific directories
-                  [ -d "$namespace/damage_type" ] && echo "        ✓ damage_type/ (1.19.4+)"
-                  [ -d "$namespace/trim_material" ] && echo "        ✓ trim_material/ (1.20+)"
-                  [ -d "$namespace/trim_pattern" ] && echo "        ✓ trim_pattern/ (1.20+)"
-                  [ -d "$namespace/chat_type" ] && echo "        ✓ chat_type/ (1.19.3+)"
+                  # New directories
+                  [ -d "$namespace/damage_type" ] && echo "        ✓ damage_type/"
+                  [ -d "$namespace/trim_material" ] && echo "        ✓ trim_material/"
+                  [ -d "$namespace/trim_pattern" ] && echo "        ✓ trim_pattern/"
+                  [ -d "$namespace/chat_type" ] && echo "        ✓ chat_type/"
                   [ -d "$namespace/banner_pattern" ] && echo "        ✓ banner_pattern/"
-                  [ -d "$namespace/enchantment" ] && echo "        ✓ enchantment/ (1.21+)"
-                  [ -d "$namespace/jukebox_song" ] && echo "        ✓ jukebox_song/ (1.21+)"
-                  [ -d "$namespace/painting_variant" ] && echo "        ✓ painting_variant/ (1.21+)"
-                  [ -d "$namespace/wolf_variant" ] && echo "        ✓ wolf_variant/ (1.20.5+)"
+                  [ -d "$namespace/enchantment" ] && echo "        ✓ enchantment/"
+                  [ -d "$namespace/jukebox_song" ] && echo "        ✓ jukebox_song/"
+                  [ -d "$namespace/painting_variant" ] && echo "        ✓ painting_variant/"
+                  [ -d "$namespace/wolf_variant" ] && echo "        ✓ wolf_variant/"
                   
-                done < <(find "$dir/data" -mindepth 1 -maxdepth 1 -type d)
+                done < <(find "$dir/data" -mindepth 1 -maxdepth 1 -type d 2>/dev/null)
               fi
             fi
 
@@ -295,13 +304,13 @@ jobs:
           fi
 
       # ─────────────────────────────
-      # MCFUNCTION VALIDATION (1.21)
+      # MCFUNCTION CONTENT VALIDATION
       # ─────────────────────────────
-      - name: Validate Function Files (MC 1.21)
+      - name: Validate Function Files Content
         run: |
           echo ""
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "⚙️  Validating Function Files (MC 1.21)..."
+          echo "⚙️  Validating Function Files Content..."
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           
           error=0
@@ -309,75 +318,176 @@ jobs:
           total_count=0
           total_lines=0
 
+          # Komut kategorileri ve uyumluluk bilgileri
+          declare -A command_compatibility
+          
+          # Temel komutlar (tüm versiyonlarda geçerli)
+          command_compatibility["execute"]="all"
+          command_compatibility["function"]="all"
+          command_compatibility["say"]="all"
+          command_compatibility["tellraw"]="all"
+          command_compatibility["give"]="all"
+          command_compatibility["summon"]="all"
+          command_compatibility["kill"]="all"
+          command_compatibility["tp"]="all"
+          command_compatibility["teleport"]="all"
+          command_compatibility["fill"]="all"
+          command_compatibility["setblock"]="all"
+          command_compatibility["particle"]="all"
+          command_compatibility["playsound"]="all"
+          command_compatibility["effect"]="all"
+          command_compatibility["enchant"]="all"
+          command_compatibility["scoreboard"]="all"
+          command_compatibility["team"]="all"
+          command_compatibility["tag"]="all"
+          command_compatibility["data"]="all"
+          command_compatibility["gamemode"]="all"
+          command_compatibility["difficulty"]="all"
+          command_compatibility["weather"]="all"
+          command_compatibility["time"]="all"
+          command_compatibility["gamerule"]="all"
+          command_compatibility["setworldspawn"]="all"
+          command_compatibility["spawnpoint"]="all"
+          command_compatibility["worldborder"]="all"
+          command_compatibility["schedule"]="all"
+          command_compatibility["forceload"]="all"
+          command_compatibility["clone"]="all"
+          command_compatibility["clear"]="all"
+          command_compatibility["item"]="81"
+          
+          # Yeni komutlar
+          command_compatibility["damage"]="81"  # 1.19.4+
+          command_compatibility["ride"]="81"    # 1.19.4+
+          command_compatibility["return"]="81"  # 1.20+
+          command_compatibility["tick"]="81"    # 1.20+
+          command_compatibility["random"]="81"  # 1.20.2+
+          
+          # Kaldırılan/değiştirilen komutlar
+          command_compatibility["replaceitem"]="deprecated"  # 1.17'de kaldırıldı, /item kullan
+
           while IFS= read -r -d $'\0' file; do
             total_count=$((total_count + 1))
             line_count=$(wc -l < "$file")
             total_lines=$((total_lines + line_count))
 
-            # Check for empty files
+            # Datapack'in pack.mcmeta dosyasını bul
+            datapack_root=$(echo "$file" | grep -o '.*/datapack' | head -1)
+            pack_mcmeta="$datapack_root/pack.mcmeta"
+            
+            current_pack_format=0
+            if [ -f "$pack_mcmeta" ]; then
+              current_pack_format=$(jq -r '.pack.pack_format' "$pack_mcmeta" 2>/dev/null || echo 0)
+            fi
+
+            echo "  Checking: $file (pack_format: $current_pack_format)"
+
+            # Boş dosya kontrolü
             if [ $line_count -eq 0 ]; then
-              echo "  ⚠️  Empty function: $file"
+              echo "    ⚠️  Empty function file"
               warnings=$((warnings + 1))
             fi
 
-            # Check for Windows line endings
+            # Windows satır sonu kontrolü
             if grep -q $'\r' "$file"; then
-              echo "  ❌ Windows line endings (CRLF) in: $file"
+              echo "    ❌ Windows line endings (CRLF) detected - use LF only"
               error=1
             fi
 
-            # Check for tabs (should use spaces)
+            # Tab karakteri kontrolü
             if grep -q $'\t' "$file"; then
-              echo "  ⚠️  Contains tab characters: $file"
+              echo "    ⚠️  Contains tab characters - use spaces instead"
               warnings=$((warnings + 1))
             fi
 
-            # MC 1.21 specific command checks
-            if grep -qE '/execute' "$file"; then
-              # Check for new 1.21 execute subcommands
-              if grep -qE 'execute.*if.*dimension' "$file"; then
-                echo "  ℹ️  Uses dimension condition: $file"
+            # Komut içeriği analizi
+            line_num=0
+            while IFS= read -r line; do
+              line_num=$((line_num + 1))
+              
+              # Boş satır ve yorum kontrolü
+              [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+              [[ "$line" =~ ^[[:space:]]*# ]] && continue
+
+              # Komut başlangıcını al
+              cmd=$(echo "$line" | sed 's/^[[:space:]]*//' | cut -d' ' -f1 | sed 's|^/||')
+
+              # Komut uyumluluk kontrolü
+              if [ -n "${command_compatibility[$cmd]}" ]; then
+                required_format="${command_compatibility[$cmd]}"
+                
+                if [ "$required_format" = "deprecated" ]; then
+                  echo "    ❌ Line $line_num: Deprecated command '/$cmd' - this command is no longer available"
+                  error=1
+                elif [ "$required_format" != "all" ] && [ "$current_pack_format" -lt "$required_format" ]; then
+                  echo "    ❌ Line $line_num: Command '/$cmd' requires pack_format $required_format or higher (current: $current_pack_format)"
+                  error=1
+                fi
               fi
-              if grep -qE 'execute.*if.*biome' "$file"; then
-                echo "  ℹ️  Uses biome condition: $file"
+
+              # Execute subcommand kontrolü (pack_format 81+)
+              if [[ "$line" =~ execute ]]; then
+                # if/unless biome (1.20+)
+                if [[ "$line" =~ execute.*(if|unless).*biome ]] && [ "$current_pack_format" -lt 81 ]; then
+                  echo "    ❌ Line $line_num: 'execute if/unless biome' requires pack_format 81+ (current: $current_pack_format)"
+                  error=1
+                fi
+                
+                # if/unless dimension (1.20+)
+                if [[ "$line" =~ execute.*(if|unless).*dimension ]] && [ "$current_pack_format" -lt 81 ]; then
+                  echo "    ❌ Line $line_num: 'execute if/unless dimension' requires pack_format 81+ (current: $current_pack_format)"
+                  error=1
+                fi
+                
+                # on relation (1.20+)
+                if [[ "$line" =~ execute.*on ]] && [ "$current_pack_format" -lt 81 ]; then
+                  echo "    ❌ Line $line_num: 'execute on' requires pack_format 81+ (current: $current_pack_format)"
+                  error=1
+                fi
+
+                # summon (1.20+)
+                if [[ "$line" =~ execute.*summon ]] && [ "$current_pack_format" -lt 81 ]; then
+                  echo "    ℹ️  Line $line_num: 'execute summon' available in pack_format 81+"
+                fi
               fi
-              if grep -qE 'execute.*on' "$file"; then
-                echo "  ℹ️  Uses relation selector (on): $file"
+
+              # Macro kontrolü $(variable) (1.20.2+, pack_format 81+)
+              if [[ "$line" =~ \$\( ]]; then
+                if [ "$current_pack_format" -lt 81 ]; then
+                  echo "    ❌ Line $line_num: Macros \$(variable) require pack_format 81+ (current: $current_pack_format)"
+                  error=1
+                else
+                  echo "    ℹ️  Line $line_num: Uses macro syntax"
+                fi
               fi
-            fi
 
-            # Check for MC 1.21 new commands/features
-            if grep -qE '/damage' "$file"; then
-              echo "  ℹ️  Uses damage command (1.19.4+): $file"
-            fi
-            if grep -qE '/return' "$file"; then
-              echo "  ℹ️  Uses return command (1.20+): $file"
-            fi
-            if grep -qE '/ride' "$file"; then
-              echo "  ℹ️  Uses ride command (1.19.4+): $file"
-            fi
-            if grep -qE '/tick' "$file"; then
-              echo "  ℹ️  Uses tick command (1.20+): $file"
-            fi
-            if grep -qE '/random' "$file"; then
-              echo "  ℹ️  Uses random command (1.20.2+): $file"
-            fi
+              # Şüpheli pattern kontrolü
+              if [[ "$line" =~ execute.*run.*execute.*run.*execute ]]; then
+                echo "    ⚠️  Line $line_num: Very complex execute chain detected"
+                warnings=$((warnings + 1))
+              fi
 
-            # Check for macros (1.20.2+)
-            if grep -qE '\$\(' "$file"; then
-              echo "  ℹ️  Uses macros (1.20.2+): $file"
-            fi
+              # .. path traversal kontrolü
+              if [[ "$line" =~ /function.*\.\. ]]; then
+                echo "    ❌ Line $line_num: Path traversal (..) is not allowed in function paths"
+                error=1
+              fi
 
-            # Check for suspicious/complex patterns
-            if grep -qE '(execute.*run.*execute.*run.*execute|/function.*\.\.)' "$file"; then
-              echo "  ⚠️  Complex execution chain in: $file"
-              warnings=$((warnings + 1))
-            fi
+              # Selector kontrolü
+              if [[ "$line" =~ @[parse] ]]; then
+                # type selector kontrolü
+                if [[ "$line" =~ type= ]]; then
+                  echo "    ℹ️  Line $line_num: Uses entity type selector"
+                fi
+                
+                # limit kontrolü
+                if [[ "$line" =~ limit= ]]; then
+                  echo "    ℹ️  Line $line_num: Uses limit selector"
+                fi
+              fi
 
-            # Check for deprecated commands (removed in 1.19.3+)
-            if grep -qE '/forceload (add|remove|query)' "$file"; then
-              echo "  ✓ Uses forceload: $file"
-            fi
+            done < "$file"
+
+            echo ""
 
           done < <(find new_versions -name "*.mcfunction" -type f -print0)
 
@@ -389,11 +499,11 @@ jobs:
 
           if [ $error -eq 0 ]; then
             echo ""
-            echo "✅ Function validation passed for MC 1.21"
+            echo "✅ Function content validation passed"
             [ $warnings -gt 0 ] && echo "⚠️  $warnings warning(s) found"
           else
             echo ""
-            echo "❌ Function validation failed"
+            echo "❌ Function content validation failed"
             exit 1
           fi
 
@@ -413,18 +523,18 @@ jobs:
             ns_name=$(basename "$namespace")
             echo "  Checking namespace: $ns_name"
 
-            # Validate namespace naming convention (lowercase, numbers, underscore, dot, hyphen)
+            # Namespace isimlendirme kuralı
             if ! [[ "$ns_name" =~ ^[a-z0-9_.-]+$ ]]; then
               echo "    ❌ Invalid namespace name (use lowercase, numbers, _, ., - only)"
               error=1
             fi
 
-            # Check for minecraft namespace (reserved)
+            # minecraft namespace kontrolü
             if [ "$ns_name" = "minecraft" ]; then
               echo "    ⚠️  Using reserved 'minecraft' namespace (not recommended)"
             fi
 
-            # Check length (max 255 characters)
+            # Uzunluk kontrolü
             if [ ${#ns_name} -gt 255 ]; then
               echo "    ❌ Namespace name too long (max 255 characters)"
               error=1
@@ -441,20 +551,20 @@ jobs:
           fi
 
       # ─────────────────────────────
-      # TAG FILES VALIDATION (1.21)
+      # TAG FILES VALIDATION
       # ─────────────────────────────
-      - name: Validate Tag Files (MC 1.21)
+      - name: Validate Tag Files
         run: |
           echo ""
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "🏷️  Validating Tag Files (MC 1.21)..."
+          echo "🏷️  Validating Tag Files..."
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           
           tag_count=0
           error=0
           warnings=0
 
-          # MC 1.21 tag categories
+          # Tag kategorileri
           declare -A tag_categories=(
             ["blocks"]="Block tags"
             ["items"]="Item tags"
@@ -462,47 +572,47 @@ jobs:
             ["fluids"]="Fluid tags"
             ["game_events"]="Game event tags"
             ["functions"]="Function tags"
-            ["damage_type"]="Damage type tags (1.19.4+)"
-            ["enchantment"]="Enchantment tags (1.21+)"
-            ["instrument"]="Instrument tags (1.19+)"
-            ["cat_variant"]="Cat variant tags (1.19+)"
-            ["painting_variant"]="Painting variant tags (1.21+)"
+            ["damage_type"]="Damage type tags"
+            ["enchantment"]="Enchantment tags"
+            ["instrument"]="Instrument tags"
+            ["cat_variant"]="Cat variant tags"
+            ["painting_variant"]="Painting variant tags"
             ["point_of_interest_type"]="POI type tags"
             ["worldgen/biome"]="Biome tags"
             ["worldgen/structure"]="Structure tags"
             ["banner_pattern"]="Banner pattern tags"
-            ["chat_type"]="Chat type tags (1.19.3+)"
+            ["chat_type"]="Chat type tags"
           )
 
           while IFS= read -r -d $'\0' file; do
             tag_count=$((tag_count + 1))
             
-            # Validate tag structure
+            # Tag yapısı kontrolü
             if ! jq -e '.values' "$file" > /dev/null 2>&1; then
               echo "  ❌ Missing 'values' array in: $file"
               error=1
               continue
             fi
 
-            # Check for replace field
+            # replace field kontrolü
             if jq -e '.replace' "$file" > /dev/null 2>&1; then
               replace_val=$(jq -r '.replace' "$file")
               echo "  ℹ️  Tag uses 'replace: $replace_val': $file"
             fi
 
-            # Validate values format
+            # values sayısı
             values_count=$(jq '.values | length' "$file")
             if [ "$values_count" -eq 0 ]; then
               echo "  ⚠️  Empty values array in: $file"
               warnings=$((warnings + 1))
             fi
 
-            # Check for required/optional fields (1.20.2+)
+            # required/optional fields
             if jq -e '.values[] | select(type == "object") | .required' "$file" > /dev/null 2>&1; then
               echo "  ℹ️  Uses required/optional fields: $file"
             fi
 
-            # Detect tag category
+            # Tag kategorisi tespiti
             for category in "${!tag_categories[@]}"; do
               if [[ "$file" == *"/tags/$category/"* ]]; then
                 echo "  ℹ️  ${tag_categories[$category]}: $file"
@@ -516,7 +626,7 @@ jobs:
           echo "  Total tag files: $tag_count"
 
           if [ $error -eq 0 ]; then
-            echo "✅ Tag validation passed for MC 1.21"
+            echo "✅ Tag validation passed"
             [ $warnings -gt 0 ] && echo "⚠️  $warnings warning(s) found"
           else
             echo "❌ Tag validation failed"
@@ -524,13 +634,13 @@ jobs:
           fi
 
       # ─────────────────────────────
-      # RECIPE VALIDATION (1.21)
+      # RECIPE VALIDATION
       # ─────────────────────────────
-      - name: Validate Recipes (MC 1.21)
+      - name: Validate Recipes
         run: |
           echo ""
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "🔧 Validating Recipes (MC 1.21)..."
+          echo "🔧 Validating Recipes..."
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           
           recipe_count=0
@@ -539,7 +649,7 @@ jobs:
           while IFS= read -r -d $'\0' file; do
             recipe_count=$((recipe_count + 1))
             
-            # Check for type field
+            # type field kontrolü
             if ! jq -e '.type' "$file" > /dev/null 2>&1; then
               echo "  ❌ Missing 'type' field in: $file"
               error=1
@@ -548,10 +658,10 @@ jobs:
 
             recipe_type=$(jq -r '.type' "$file")
             
-            # Validate recipe types for MC 1.21
+            # Recipe type validasyonu
             case "$recipe_type" in
               "minecraft:crafting_shaped"|"minecraft:crafting_shapeless"|"minecraft:smelting"|"minecraft:blasting"|"minecraft:smoking"|"minecraft:campfire_cooking"|"minecraft:stonecutting"|"minecraft:smithing_transform"|"minecraft:smithing_trim")
-                echo "  ✓ Valid recipe type: $recipe_type in $file"
+                echo "  ✓ Valid recipe type: $recipe_type"
                 ;;
               *)
                 echo "  ⚠️  Unknown recipe type: $recipe_type in $file"
@@ -571,47 +681,6 @@ jobs:
           [ $error -ne 0 ] && exit 1
 
       # ─────────────────────────────
-      # ADVANCEMENT VALIDATION (1.21)
-      # ─────────────────────────────
-      - name: Validate Advancements (MC 1.21)
-        run: |
-          echo ""
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "🏆 Validating Advancements (MC 1.21)..."
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          
-          adv_count=0
-          error=0
-
-          while IFS= read -r -d $'\0' file; do
-            adv_count=$((adv_count + 1))
-            
-            # Check for criteria field
-            if ! jq -e '.criteria' "$file" > /dev/null 2>&1; then
-              echo "  ⚠️  Missing 'criteria' field in: $file"
-            fi
-
-            # Check for display field
-            if jq -e '.display' "$file" > /dev/null 2>&1; then
-              echo "  ✓ Has display info: $file"
-            fi
-
-            # Check for rewards
-            if jq -e '.rewards' "$file" > /dev/null 2>&1; then
-              echo "  ✓ Has rewards: $file"
-            fi
-
-          done < <(find new_versions -path "*/advancement/*.json" -type f -print0)
-
-          echo ""
-          if [ $adv_count -gt 0 ]; then
-            echo "  Total advancements: $adv_count"
-            echo "✅ Advancement validation passed"
-          else
-            echo "  No advancement files found (optional)"
-          fi
-
-      # ─────────────────────────────
       # FILE SIZE CHECK
       # ─────────────────────────────
       - name: Check File Sizes
@@ -626,7 +695,7 @@ jobs:
           while IFS= read -r -d $'\0' file; do
             size=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null)
             
-            # Warn about files > 1MB
+            # 1MB'dan büyük dosyalar için uyarı
             if [ $size -gt 1048576 ]; then
               size_mb=$(awk "BEGIN {printf \"%.2f\", $size/1048576}")
               echo "  ⚠️  Large file ($size_mb MB): $file"
@@ -665,10 +734,12 @@ jobs:
         run: |
           echo ""
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "📋 VALIDATION SUMMARY - Minecraft 1.21"
+          echo "📋 VALIDATION SUMMARY"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo ""
-          echo "  Pack Format:      48 (MC 1.21)"
+          echo "  Supported Pack Formats: 81, 88, 94"
+          echo "  Invalid Pack Formats:   ≤80"
+          echo ""
           echo "  JSON Files:       $(find new_versions -name '*.json' -type f 2>/dev/null | wc -l)"
           echo "  pack.mcmeta:      $(find new_versions -name 'pack.mcmeta' -type f 2>/dev/null | wc -l)"
           echo "  Functions:        $(find new_versions -name '*.mcfunction' -type f 2>/dev/null | wc -l)"
@@ -682,7 +753,7 @@ jobs:
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           
           if [ "${{ job.status }}" == "success" ]; then
-            echo "✅ ALL VALIDATIONS PASSED FOR MC 1.21"
+            echo "✅ ALL VALIDATIONS PASSED"
           else
             echo "❌ VALIDATION FAILED - Please review errors above"
           fi
@@ -696,7 +767,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: validation-logs-mc-1.21
+          name: validation-logs
           path: |
             new_versions/**/datapack/**/*.json
             new_versions/**/datapack/**/*.mcfunction
