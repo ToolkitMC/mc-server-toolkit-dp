@@ -1,0 +1,799 @@
+name: Validate Datapack
+
+on:
+  pull_request:
+    paths:
+      - 'new_versions/**/datapack/**'
+      - '.github/workflows/validate-datapack.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'new_versions/**/datapack/**'
+      - '.github/workflows/validate-datapack.yml'
+  workflow_dispatch:
+
+env:
+  STRICT_MODE: false  # true = unknown commands fail, false = warnings only
+  TARGET: release     # release | snapshot
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq tree
+          echo "✅ Dependencies installed"
+
+      # ─────────────────────────────
+      # JSON SYNTAX VALIDATION
+      # ─────────────────────────────
+      - name: Validate JSON Syntax
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🔍 Validating JSON Files..."
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          
+          error=0
+          count=0
+          failed_files=()
+
+          while IFS= read -r -d $'\0' file; do
+            count=$((count + 1))
+            echo "  Checking: $file"
+            
+            if ! jq empty "$file" 2>/dev/null; then
+              echo "  ❌ Invalid JSON syntax: $file"
+              failed_files+=("$file")
+              error=1
+            fi
+          done < <(find new_versions -name "*.json" -type f -print0)
+
+          echo ""
+          if [ $error -eq 0 ]; then
+            echo "✅ All $count JSON files are valid"
+          else
+            echo "❌ Failed validation for ${#failed_files[@]} file(s):"
+            printf '   - %s\n' "${failed_files[@]}"
+            exit 1
+          fi
+
+      # ─────────────────────────────
+      # FORBIDDEN METADATA CHECK
+      # ─────────────────────────────
+      - name: Check Forbidden Auth Metadata
+        run: |
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🔒 Checking Forbidden Metadata..."
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          
+          error=0
+          violations=()
+
+          while IFS= read -r -d $'\0' file; do
+            if jq -e '
+              .. | objects |
+              select(
+                (.name? == "ely") and
+                (.value? == "but why are you asking?")
+              )
+            ' "$file" > /dev/null 2>&1; then
+              echo "  ❌ Forbidden ely.by metadata in: $file"
+              violations+=("$file (ely.by)")
+              error=1
+            fi
+
+            if jq -e '
+              .. | objects |
+              select(
+                .authlib? or
+                .authentication? or
+                (.name? | test("auth|login|credential"; "i"))
+              )
+            ' "$file" > /dev/null 2>&1; then
+              echo "  ⚠️  Suspicious auth pattern in: $file"
+            fi
+          done < <(find new_versions -name "*.json" -type f -print0)
+
+          echo ""
+          if [ $error -eq 0 ]; then
+            echo "✅ No forbidden metadata found"
+          else
+            echo "❌ Found ${#violations[@]} violation(s)"
+            exit 1
+          fi
+
+      # ─────────────────────────────
+      # PACK.MCMETA VALIDATION
+      # ─────────────────────────────
+      - name: Validate pack.mcmeta Files
+        run: |
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📦 Validating pack.mcmeta Files..."
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          
+          found=0
+          error=0
+          warnings=0
+
+          # Valid pack format values
+          VALID_FORMATS=(81 88 94)
+          INVALID_THRESHOLD=80
+
+          # Pack format cache
+          mkdir -p /tmp/pack_formats
+
+          while IFS= read -r -d $'\0' file; do
+            found=1
+            
+            # Find datapack root (directory containing pack.mcmeta)
+            datapack_root=$(dirname "$file")
+            datapack_id=$(echo "$datapack_root" | md5sum | cut -d' ' -f1)
+            
+            echo "  ═══════════════════════════════════════════"
+            echo "  📦 File: $file"
+            echo "  ═══════════════════════════════════════════"
+
+            # Required: pack.pack_format
+            if ! jq -e '.pack.pack_format' "$file" > /dev/null 2>&1; then
+              echo "    ❌ Missing pack.pack_format"
+              error=1
+              continue
+            fi
+
+            pack_format=$(jq -r '.pack.pack_format' "$file")
+            echo "    ℹ️  Pack format: $pack_format"
+            
+            # Cache pack format
+            echo "$pack_format:$datapack_root" > "/tmp/pack_formats/${datapack_id}.txt"
+            
+            # Pack format validation
+            is_valid=0
+            for valid_format in "${VALID_FORMATS[@]}"; do
+              if [ "$pack_format" -eq "$valid_format" ] 2>/dev/null; then
+                is_valid=1
+                break
+              fi
+            done
+
+            if [ $is_valid -eq 1 ]; then
+              case $pack_format in
+                81)
+                  echo "    ✅ Pack format 81 (MC 1.20.2 - 1.20.4)"
+                  ;;
+                88)
+                  echo "    ✅ Pack format 88 (MC 1.21.2 - 1.21.3)"
+                  ;;
+                94)
+                  echo "    ✅ Pack format 94 (MC 1.21.4+)"
+                  ;;
+              esac
+            elif [ "$pack_format" -le "$INVALID_THRESHOLD" ] 2>/dev/null; then
+              echo "    ❌ INVALID: pack_format $pack_format is ≤80"
+              echo "       → Must be 81, 88, or 94"
+              error=1
+            else
+              echo "    ⚠️  Unknown pack_format: $pack_format"
+              echo "       → Expected: 81, 88, or 94"
+              warnings=$((warnings + 1))
+            fi
+
+            # Description check
+            if ! jq -e '.pack.description' "$file" > /dev/null 2>&1; then
+              echo "    ⚠️  Missing pack.description"
+              warnings=$((warnings + 1))
+            else
+              desc_type=$(jq -r '.pack.description | type' "$file")
+              if [ "$desc_type" = "string" ]; then
+                desc=$(jq -r '.pack.description' "$file" | head -c 60)
+                echo "    ✓ Description: $desc"
+              elif [ "$desc_type" = "object" ]; then
+                if jq -e '.pack.description.text' "$file" > /dev/null 2>&1; then
+                  desc=$(jq -r '.pack.description.text' "$file" | head -c 60)
+                  echo "    ✓ Description (text component): $desc"
+                fi
+              fi
+            fi
+
+            # supported_formats
+            if jq -e '.pack.supported_formats' "$file" > /dev/null 2>&1; then
+              sf_type=$(jq -r '.pack.supported_formats | type' "$file")
+              if [ "$sf_type" = "object" ]; then
+                min_inc=$(jq -r '.pack.supported_formats.min_inclusive' "$file")
+                max_inc=$(jq -r '.pack.supported_formats.max_inclusive' "$file")
+                echo "    ✓ Supported formats: $min_inc - $max_inc"
+              fi
+            fi
+
+            # Invalid fields (NOT used by Minecraft)
+            if jq -e '.pack.min_format' "$file" > /dev/null 2>&1; then
+              echo "    ⚠️  'pack.min_format' is NOT a valid Minecraft field"
+              echo "       → Use 'pack.supported_formats.min_inclusive' instead"
+              warnings=$((warnings + 1))
+            fi
+            
+            if jq -e '.pack.max_format' "$file" > /dev/null 2>&1; then
+              echo "    ⚠️  'pack.max_format' is NOT a valid Minecraft field"
+              echo "       → Use 'pack.supported_formats.max_inclusive' instead"
+              warnings=$((warnings + 1))
+            fi
+
+            if jq -e '.metadata' "$file" > /dev/null 2>&1; then
+              echo "    ⚠️  'metadata' is NOT a valid Minecraft field"
+              echo "       → This section will be ignored by the game"
+              warnings=$((warnings + 1))
+            fi
+
+            if jq -e '.language' "$file" > /dev/null 2>&1; then
+              echo "    ⚠️  'language' is only valid in RESOURCE packs, not datapacks"
+              echo "       → This section will be ignored by the game"
+              warnings=$((warnings + 1))
+            fi
+
+            # Filter (valid)
+            if jq -e '.filter' "$file" > /dev/null 2>&1; then
+              block_count=$(jq '.filter.block | length' "$file" 2>/dev/null || echo 0)
+              echo "    ✓ Filter with $block_count block pattern(s)"
+            fi
+
+            # Overlays (valid)
+            if jq -e '.overlays' "$file" > /dev/null 2>&1; then
+              overlay_count=$(jq '.overlays.entries | length' "$file")
+              echo "    ✓ Has $overlay_count overlay(s)"
+            fi
+
+            # Features (valid)
+            if jq -e '.features' "$file" > /dev/null 2>&1; then
+              echo "    ✓ Has feature flags"
+            fi
+
+            echo ""
+          done < <(find new_versions -path "*/datapack/pack.mcmeta" -type f -print0)
+
+          if [ $found -eq 0 ]; then
+            echo "❌ No pack.mcmeta files found"
+            exit 1
+          fi
+
+          if [ $error -eq 0 ]; then
+            echo "✅ All pack.mcmeta files are valid"
+            [ $warnings -gt 0 ] && echo "⚠️  $warnings warning(s) - non-standard fields detected"
+          else
+            echo "❌ pack.mcmeta validation failed"
+            exit 1
+          fi
+
+      # ─────────────────────────────
+      # DATAPACK STRUCTURE
+      # ─────────────────────────────
+      - name: Validate Datapack Structure
+        run: |
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📁 Validating Datapack Structure..."
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          
+          error=0
+          datapack_count=0
+
+          while IFS= read -r -d $'\0' file; do
+            dir=$(dirname "$file")
+            datapack_count=$((datapack_count + 1))
+            echo "  Datapack #$datapack_count: $dir"
+
+            if [ ! -d "$dir/data" ]; then
+              echo "    ❌ Missing data/ directory"
+              error=1
+            else
+              echo "    ✅ data/ directory exists"
+              
+              namespace_count=$(find "$dir/data" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+              echo "    ℹ️  Found $namespace_count namespace(s)"
+
+              if [ $namespace_count -gt 0 ]; then
+                while IFS= read -r namespace; do
+                  ns_name=$(basename "$namespace")
+                  echo "      → $ns_name"
+                  
+                  [ -d "$namespace/function" ] && echo "        ✓ function/"
+                  [ -d "$namespace/tags" ] && echo "        ✓ tags/"
+                  [ -d "$namespace/advancement" ] && echo "        ✓ advancement/"
+                  [ -d "$namespace/loot_table" ] && echo "        ✓ loot_table/"
+                  [ -d "$namespace/recipe" ] && echo "        ✓ recipe/"
+                  
+                done < <(find "$dir/data" -mindepth 1 -maxdepth 1 -type d 2>/dev/null)
+              fi
+            fi
+
+            echo ""
+          done < <(find new_versions -path "*/datapack/pack.mcmeta" -type f -print0)
+
+          if [ $error -eq 0 ]; then
+            echo "✅ Datapack structure validation passed"
+          else
+            echo "❌ Datapack structure validation failed"
+            exit 1
+          fi
+
+      # ─────────────────────────────
+      # MCFUNCTION DETECTION
+      # ─────────────────────────────
+      - name: Detect Function Files
+        run: |
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🔍 Detecting .mcfunction Files..."
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          
+          count=0
+          while IFS= read -r -d $'\0' file; do
+            count=$((count + 1))
+            echo "  Found: $file"
+          done < <(find new_versions -path "*/datapack/data/*/function/*.mcfunction" -type f -print0)
+          
+          echo ""
+          echo "📊 Total: $count .mcfunction file(s)"
+          
+          if [ $count -eq 0 ]; then
+            echo "⚠️  No .mcfunction files detected"
+          else
+            echo "✅ .mcfunction files detected"
+          fi
+
+      # ─────────────────────────────
+      # MCFUNCTION CONTENT VALIDATION
+      # ─────────────────────────────
+      - name: Validate Function Files Content
+        run: |
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "⚙️  Validating Function Content..."
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          
+          error=0
+          warnings=0
+          total_count=0
+          total_lines=0
+          total_commands=0
+
+          # Command compatibility matrix
+          declare -A command_min_format
+          
+          # Basic commands (available in all versions)
+          command_min_format["say"]=1
+          command_min_format["tell"]=1
+          command_min_format["tellraw"]=1
+          command_min_format["msg"]=1
+          command_min_format["title"]=1
+          command_min_format["give"]=1
+          command_min_format["clear"]=1
+          command_min_format["summon"]=1
+          command_min_format["kill"]=1
+          command_min_format["tp"]=1
+          command_min_format["teleport"]=1
+          command_min_format["setblock"]=1
+          command_min_format["fill"]=1
+          command_min_format["clone"]=1
+          command_min_format["execute"]=1
+          command_min_format["particle"]=1
+          command_min_format["playsound"]=1
+          command_min_format["effect"]=1
+          command_min_format["enchant"]=1
+          command_min_format["scoreboard"]=1
+          command_min_format["team"]=1
+          command_min_format["tag"]=1
+          command_min_format["data"]=1
+          command_min_format["gamemode"]=1
+          command_min_format["difficulty"]=1
+          command_min_format["weather"]=1
+          command_min_format["time"]=1
+          command_min_format["gamerule"]=1
+          command_min_format["worldborder"]=1
+          command_min_format["forceload"]=1
+          command_min_format["function"]=1
+          command_min_format["schedule"]=1
+          command_min_format["datapack"]=1
+          command_min_format["reload"]=1
+          command_min_format["advancement"]=1
+          command_min_format["recipe"]=1
+          command_min_format["loot"]=1
+          command_min_format["bossbar"]=1
+          command_min_format["experience"]=1
+          command_min_format["xp"]=1
+          command_min_format["spreadplayers"]=1
+          command_min_format["setworldspawn"]=1
+          command_min_format["spawnpoint"]=1
+          command_min_format["spectate"]=1
+          command_min_format["locate"]=1
+          command_min_format["locatebiome"]=1
+          
+          # Commands introduced in pack format 81+ (MC 1.20.2+)
+          command_min_format["item"]=81
+          command_min_format["damage"]=81
+          command_min_format["ride"]=81
+          command_min_format["return"]=81
+          command_min_format["tick"]=81
+          command_min_format["random"]=81
+          
+          # Special/mod commands
+          command_min_format["dialog"]=1
+          
+          # Deprecated commands
+          declare -A deprecated_commands
+          deprecated_commands["replaceitem"]="Use /item replace instead (requires pack_format 81+)"
+
+          while IFS= read -r -d $'\0' file; do
+            total_count=$((total_count + 1))
+            
+            # Find pack format
+            current_pack_format=0
+            file_dir="$file"
+            
+            while [ "$file_dir" != "/" ] && [ "$file_dir" != "." ]; do
+              if [ -f "$file_dir/pack.mcmeta" ]; then
+                datapack_id=$(echo "$file_dir" | md5sum | cut -d' ' -f1)
+                if [ -f "/tmp/pack_formats/${datapack_id}.txt" ]; then
+                  current_pack_format=$(cut -d':' -f1 "/tmp/pack_formats/${datapack_id}.txt")
+                fi
+                break
+              fi
+              file_dir=$(dirname "$file_dir")
+            done
+
+            relative_path=$(echo "$file" | sed "s|^$(pwd)/||")
+            echo ""
+            echo "  ═══════════════════════════════════════════"
+            echo "  📄 $relative_path"
+            echo "  📦 Pack format: $current_pack_format"
+            echo "  ═══════════════════════════════════════════"
+
+            line_count=$(wc -l < "$file")
+            total_lines=$((total_lines + line_count))
+
+            if [ $line_count -eq 0 ]; then
+              echo "    ⚠️  Empty file"
+              warnings=$((warnings + 1))
+              continue
+            fi
+
+            # CRLF check
+            if grep -q $'\r' "$file"; then
+              echo "    ❌ Windows line endings (CRLF) detected - use LF only"
+              error=1
+            fi
+
+            # Tab check
+            if grep -q $'\t' "$file"; then
+              echo "    ⚠️  Contains tabs - spaces recommended"
+              warnings=$((warnings + 1))
+            fi
+
+            # Line by line analysis
+            line_num=0
+            file_commands=0
+            
+            while IFS= read -r line; do
+              line_num=$((line_num + 1))
+              
+              # Skip empty lines
+              [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+              
+              # Skip comments
+              [[ "$line" =~ ^[[:space:]]*# ]] && continue
+
+              file_commands=$((file_commands + 1))
+              total_commands=$((total_commands + 1))
+
+              # Clean line - remove leading/trailing whitespace and optional leading /
+              clean_line=$(echo "$line" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
+              [[ "$clean_line" =~ ^/ ]] && clean_line="${clean_line:1}"
+              
+              # Extract command name (first word)
+              cmd=$(echo "$clean_line" | awk '{print $1}')
+
+              # Check deprecated commands
+              if [ -n "${deprecated_commands[$cmd]}" ]; then
+                echo "    ❌ Line $line_num: Deprecated command '/$cmd'"
+                echo "       → ${deprecated_commands[$cmd]}"
+                error=1
+                continue
+              fi
+
+              # Check command compatibility with pack format
+              if [ -n "${command_min_format[$cmd]}" ]; then
+                required_format="${command_min_format[$cmd]}"
+                
+                if [ "$current_pack_format" -gt 0 ] && [ "$current_pack_format" -lt "$required_format" ]; then
+                  echo "    ❌ Line $line_num: Command '/$cmd' requires pack_format $required_format+ (current: $current_pack_format)"
+                  error=1
+                fi
+              else
+                # Unknown command
+                if [[ ! "$cmd" =~ ^(minecraft:|#) ]]; then
+                  if [ "$STRICT_MODE" = "true" ]; then
+                    echo "    ❌ Line $line_num: Unknown command '/$cmd' (STRICT_MODE enabled)"
+                    error=1
+                  else
+                    echo "    ℹ️  Line $line_num: Custom/unknown command '/$cmd'"
+                  fi
+                fi
+              fi
+
+              # Special execute subcommand checks
+              if [[ "$clean_line" =~ ^execute ]]; then
+                # Check biome condition (requires pack_format 81+)
+                if [[ "$clean_line" =~ (if|unless)[[:space:]]+biome ]] && [ "$current_pack_format" -gt 0 ] && [ "$current_pack_format" -lt 81 ]; then
+                  echo "    ❌ Line $line_num: 'execute if/unless biome' requires pack_format 81+"
+                  error=1
+                fi
+                
+                # Check dimension condition (requires pack_format 81+)
+                if [[ "$clean_line" =~ (if|unless)[[:space:]]+dimension ]] && [ "$current_pack_format" -gt 0 ] && [ "$current_pack_format" -lt 81 ]; then
+                  echo "    ❌ Line $line_num: 'execute if/unless dimension' requires pack_format 81+"
+                  error=1
+                fi
+                
+                # Check 'execute on' (requires pack_format 81+)
+                if [[ "$clean_line" =~ execute[[:space:]]+on[[:space:]] ]] && [ "$current_pack_format" -gt 0 ] && [ "$current_pack_format" -lt 81 ]; then
+                  echo "    ❌ Line $line_num: 'execute on' requires pack_format 81+"
+                  error=1
+                fi
+              fi
+
+              # Warn about deeply nested execute chains
+              execute_count=$(echo "$clean_line" | grep -o "execute" | wc -l)
+              if [ "$execute_count" -ge 3 ]; then
+                echo "    ⚠️  Line $line_num: Very deep execute chain (${execute_count}x nested)"
+                warnings=$((warnings + 1))
+              fi
+
+              # Check for path traversal attempts
+              if [[ "$clean_line" =~ \.\. ]]; then
+                echo "    ❌ Line $line_num: Path traversal (..) not allowed in function paths"
+                error=1
+              fi
+
+            done < "$file"
+
+            echo "    ✓ Analyzed: $file_commands command(s) in $line_count line(s)"
+
+          done < <(find new_versions -path "*/datapack/data/*/function/*.mcfunction" -type f -print0)
+
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📊 Command Validation Summary:"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "  Total files:     $total_count"
+          echo "  Total lines:     $total_lines"
+          echo "  Total commands:  $total_commands"
+          [ $total_count -gt 0 ] && echo "  Avg commands/file: $((total_commands / total_count))"
+
+          if [ $error -eq 0 ]; then
+            echo ""
+            echo "✅ Command validation passed"
+            [ $warnings -gt 0 ] && echo "⚠️  $warnings warning(s) detected"
+          else
+            echo ""
+            echo "❌ Command validation failed"
+            exit 1
+          fi
+
+      # ─────────────────────────────
+      # MACRO VALIDATION
+      # ─────────────────────────────
+      - name: Validate Macro Usage
+        run: |
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🔧 Validating Macro Usage..."
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          
+          error=0
+          files_with_macros=0
+          total_macro_vars=0
+
+          while IFS= read -r -d $'\0' file; do
+            
+            # Find pack format
+            current_pack_format=0
+            file_dir="$file"
+            while [ "$file_dir" != "/" ] && [ "$file_dir" != "." ]; do
+              if [ -f "$file_dir/pack.mcmeta" ]; then
+                datapack_id=$(echo "$file_dir" | md5sum | cut -d' ' -f1)
+                if [ -f "/tmp/pack_formats/${datapack_id}.txt" ]; then
+                  current_pack_format=$(cut -d':' -f1 "/tmp/pack_formats/${datapack_id}.txt")
+                fi
+                break
+              fi
+              file_dir=$(dirname "$file_dir")
+            done
+
+            relative_path=$(echo "$file" | sed "s|^$(pwd)/||")
+            
+            # Find ONLY real macro syntax: $(variable_name)
+            # This regex specifically looks for $( followed by alphanumeric/underscore, followed by )
+            macro_vars=$(grep -oP '\$\(\K[a-zA-Z0-9_]+(?=\))' "$file" 2>/dev/null | sort -u)
+            macro_count=$(echo "$macro_vars" | grep -c '.' 2>/dev/null || echo 0)
+            
+            if [ $macro_count -gt 0 ]; then
+              # Real macros found
+              files_with_macros=$((files_with_macros + 1))
+              total_macro_vars=$((total_macro_vars + macro_count))
+              
+              echo "  ═══════════════════════════════════════════"
+              echo "  📄 $relative_path"
+              echo "  ═══════════════════════════════════════════"
+              echo "    📦 Pack format: $current_pack_format"
+              echo "    🔧 Macro variables ($macro_count):"
+              
+              # List each macro variable
+              while IFS= read -r var; do
+                [ -n "$var" ] && echo "       • \$(${var})"
+              done <<< "$macro_vars"
+              
+              # Pack format requirement check
+              if [ "$current_pack_format" -gt 0 ] && [ "$current_pack_format" -lt 81 ]; then
+                echo "    ❌ ERROR: Macros require pack_format 81+ (MC 1.20.2+)"
+                echo "       Current pack_format: $current_pack_format"
+                error=1
+              else
+                echo "    ✅ Pack format supports macros"
+              fi
+              
+              echo ""
+            fi
+
+          done < <(find new_versions -path "*/datapack/data/*/function/*.mcfunction" -type f -print0)
+
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📊 Macro Summary:"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "  Files with macros:     $files_with_macros"
+          echo "  Total macro variables: $total_macro_vars"
+          
+          if [ $files_with_macros -gt 0 ]; then
+            echo ""
+            echo "  ℹ️  Macro System Info:"
+            echo "     • Required pack_format: 81+ (MC 1.20.2+)"
+            echo "     • Syntax: \$(variable_name)"
+            echo "     • Usage: /function namespace:path {variable: value}"
+            echo ""
+            echo "  ℹ️  Note: The $ character in JSON text components"
+            echo "     (e.g., tellraw, title) is NOT a macro and is normal."
+          fi
+
+          if [ $error -eq 0 ]; then
+            echo ""
+            if [ $files_with_macros -eq 0 ]; then
+              echo "ℹ️  No macro usage detected (this is normal)"
+            else
+              echo "✅ Macro validation passed"
+            fi
+          else
+            echo ""
+            echo "❌ Macro validation failed - incompatible pack_format"
+            exit 1
+          fi
+
+      # ─────────────────────────────
+      # NAMESPACE VALIDATION
+      # ─────────────────────────────
+      - name: Validate Namespaces
+        run: |
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🏷️  Validating Namespaces..."
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          
+          error=0
+          count=0
+          
+          while IFS= read -r -d $'\0' namespace; do
+            count=$((count + 1))
+            ns_name=$(basename "$namespace")
+            echo "  [$count] Namespace: $ns_name"
+
+            # Check valid characters (lowercase letters, numbers, underscore, period, hyphen)
+            if ! [[ "$ns_name" =~ ^[a-z0-9_.-]+$ ]]; then
+              echo "      ❌ Invalid characters (allowed: a-z, 0-9, _, ., -)"
+              error=1
+            else
+              echo "      ✓ Valid naming"
+            fi
+
+            # Warn about reserved namespace
+            if [ "$ns_name" = "minecraft" ]; then
+              echo "      ⚠️  'minecraft' is a reserved namespace"
+            fi
+
+            # Check length
+            if [ ${#ns_name} -gt 255 ]; then
+              echo "      ❌ Name too long (max: 255 characters, current: ${#ns_name})"
+              error=1
+            fi
+
+            # Count resources
+            func_count=$(find "$namespace/function" -name "*.mcfunction" 2>/dev/null | wc -l)
+            [ $func_count -gt 0 ] && echo "      ℹ️  Functions: $func_count"
+
+            echo ""
+          done < <(find new_versions -path "*/datapack/data/*" -mindepth 1 -maxdepth 1 -type d -print0)
+
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "  Total namespaces: $count"
+          
+          if [ $error -eq 0 ]; then
+            echo "✅ Namespace validation passed"
+          else
+            echo "❌ Namespace validation failed"
+            exit 1
+          fi
+
+      # ─────────────────────────────
+      # FINAL SUMMARY
+      # ─────────────────────────────
+      - name: Validation Summary
+        if: always()
+        run: |
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📋 VALIDATION SUMMARY"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          echo "  🔧 Mode:   STRICT_MODE=$STRICT_MODE"
+          echo "  🎯 Target: $TARGET"
+          echo ""
+          echo "  ═══════════════════════════════════════════"
+          echo "  📊 Statistics:"
+          echo "  ═══════════════════════════════════════════"
+          echo "  📦 pack.mcmeta files:  $(find new_versions -path "*/datapack/pack.mcmeta" -type f 2>/dev/null | wc -l)"
+          echo "  📄 JSON files:         $(find new_versions -name '*.json' -type f 2>/dev/null | wc -l)"
+          echo "  ⚙️  Function files:     $(find new_versions -name '*.mcfunction' -type f 2>/dev/null | wc -l)"
+          echo "  🏷️  Namespaces:         $(find new_versions -path '*/datapack/data/*' -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)"
+          echo "  🔧 Files with macros:  $(find new_versions -name '*.mcfunction' -type f -exec grep -l '\$(' {} \; 2>/dev/null | wc -l)"
+          echo ""
+          echo "  ═══════════════════════════════════════════"
+          echo "  ✅ Valid Pack Formats:   81, 88, 94"
+          echo "  ❌ Invalid Pack Formats: ≤80"
+          echo "  ═══════════════════════════════════════════"
+          echo ""
+          
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "  ✅ ALL VALIDATIONS PASSED"
+            echo ""
+            echo "  🚀 Datapack is production-ready!"
+          else
+            echo "  ❌ VALIDATION FAILED"
+            echo ""
+            echo "  Common issues to check:"
+            echo "    • pack_format must be 81, 88, or 94 (not ≤80)"
+            echo "    • Commands must be compatible with pack_format"
+            echo "    • Macros \$(var) require pack_format 81+"
+            echo "    • No CRLF line endings (use LF only)"
+            echo "    • Valid namespace names (a-z, 0-9, _, ., -)"
+          fi
+          
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+      # ─────────────────────────────
+      # UPLOAD ARTIFACTS ON FAILURE
+      # ─────────────────────────────
+      - name: Upload Validation Logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-logs
+          path: |
+            new_versions/**/datapack/**/*.json
+            new_versions/**/datapack/**/*.mcfunction
+          retention-days: 7
