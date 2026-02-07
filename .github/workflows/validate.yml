@@ -26,7 +26,7 @@ jobs:
         echo "Checking JSON files..."
         error_found=0
         
-        for file in $(find new_versions -name "*.json" -type f); do
+        find new_versions -name "*.json" -type f -print0 | while IFS= read -r -d '' file; do
           echo "Validating: $file"
           if ! jq empty "$file" 2>/dev/null; then
             echo "Error: Invalid JSON: $file"
@@ -45,7 +45,7 @@ jobs:
         echo "Checking pack.mcmeta files..."
         error_found=0
         
-        for file in $(find new_versions -name "pack.mcmeta" -type f); do
+        find new_versions -name "pack.mcmeta" -type f -print0 | while IFS= read -r -d '' file; do
           echo "Validating: $file"
           if ! jq '.pack.pack_format' "$file" > /dev/null 2>&1; then
             echo "Error: Invalid pack.mcmeta: $file"
@@ -65,7 +65,7 @@ jobs:
         error_found=0
         warning_count=0
         
-        for file in $(find new_versions -name "*.mcfunction" -type f); do
+        find new_versions -name "*.mcfunction" -type f -print0 | while IFS= read -r -d '' file; do
           echo "Checking: $file"
           
           # Empty file check
@@ -88,7 +88,7 @@ jobs:
           
           # Check for common Minecraft command errors
           if grep -qE "^[[:space:]]*/give @[pares] minecraft:[a-z_]+ [0-9]+ [0-9]+$" "$file"; then
-            echo "Warning: Old /give syntax detected in: $file (use NBT format)"
+            echo "Warning: Old /give syntax detected in: $file"
             warning_count=$((warning_count + 1))
           fi
           
