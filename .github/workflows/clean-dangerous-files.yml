@@ -3,10 +3,10 @@ name: Clean Dangerous Files
 on:
   push:
     paths:
-      - "new_versions/**"
+      - new_versions/**
   pull_request:
     paths:
-      - "new_versions/**"
+      - new_versions/**
   workflow_dispatch:
 
 jobs:
@@ -19,69 +19,40 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Scan and delete dangerous files
+      - name: Scan datapacks
         id: scan
+        shell: bash
         run: |
-          set -euo pipefail
+          set -e
 
-          echo "🔍 Scanning for dangerous files"
+          DANGEROUS_EXTENSIONS="sh js exe bat cmd ps1 py rb pl jar dll so dylib vbs com msi app deb rpm"
+          DELETED=0
 
-          DANGEROUS_EXTENSIONS=("sh" "js" "exe" "bat" "cmd" "ps1" "py" "rb" "pl" "jar" "dll" "so" "dylib" "vbs" "com" "msi" "app" "deb" "rpm")
-          DELETED_FILES=()
+          for ext in $DANGEROUS_EXTENSIONS; do
+            while IFS= read -r file; do
+              echo "Found dangerous file: $file"
 
-          FIND_PATTERN=""
-          for ext in "${DANGEROUS_EXTENSIONS[@]}"; do
-            FIND_PATTERN="$FIND_PATTERN -o -name *.$ext"
+              if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+                echo "::error file=$file::.$ext files are not allowed in datapacks"
+                DELETED=1
+              else
+                rm -f "$file"
+                DELETED=1
+              fi
+            done < <(find new_versions -type f -name "*.$ext" -path "*datapack*" 2>/dev/null)
           done
-          FIND_PATTERN="${FIND_PATTERN# -o }"
 
-          while IFS= read -r -d '' file; do
-            echo "⚠️ Found: $file"
+          echo "file_found=$DELETED" >> "$GITHUB_OUTPUT"
 
-            if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
-              ext="${file##*.}"
-              echo "::error file=$file,title=Security violation::.$ext files are not allowed in datapacks."
-              DELETED_FILES+=("$file")
-            else
-              rm -f "$file"
-              echo "🗑️ Deleted: $file"
-              DELETED_FILES+=("$file")
-            fi
-          done < <(
-            find new_versions -type f \( $FIND_PATTERN \) -path "*datapack*" -print0 2>/dev/null | sort -zu
-          )
-
-          COUNT="${#DELETED_FILES[@]}"
-          echo "file_count=$COUNT" >> "$GITHUB_OUTPUT"
-
-          if [ "$COUNT" -gt 0 ]; then
-            printf '%s\n' "${DELETED_FILES[@]}" | sort -u > deleted_files.log
-            if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
-              exit 1
-            fi
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ] && [ "$DELETED" -eq 1 ]; then
+            exit 1
           fi
 
       - name: Commit changes
-        if: github.event_name != 'pull_request' && steps.scan.outputs.file_count != '0'
+        if: github.event_name != 'pull_request' && steps.scan.outputs.file_found == '1'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-
           git add -A
-          git commit -m "🛡️ Security: removed dangerous files"
+          git commit -m "Security: remove dangerous files from datapacks"
           git push
-
-      - name: Upload deletion log
-        if: always() && steps.scan.outputs.file_count != '0'
-        uses: actions/upload-artifact@v4
-        with:
-          name: deletion-log
-          path: deleted_files.log
-
-      - name: Summary
-        if: always()
-        run: |
-          echo "## 🛡️ Datapack Security Scan" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Event:** $GITHUB_EVENT_NAME" >> $GITHUB_STEP_SUMMARY
-          echo "**Deleted files:** ${{ steps.scan.outputs.file_count }}" >> $GITHUB_STEP_SUMMARY
