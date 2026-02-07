@@ -113,7 +113,7 @@ jobs:
           fi
 
       # ─────────────────────────────
-      # PACK.MCMETA VALIDATION (DÜZELTİLDİ)
+      # PACK.MCMETA VALIDATION
       # ─────────────────────────────
       - name: Validate pack.mcmeta Files
         run: |
@@ -126,7 +126,7 @@ jobs:
           error=0
           warnings=0
 
-          # Geçerli pack format değerleri
+          # Valid pack format values
           VALID_FORMATS=(81 88 94)
           INVALID_THRESHOLD=80
 
@@ -136,7 +136,7 @@ jobs:
           while IFS= read -r -d $'\0' file; do
             found=1
             
-            # Datapack root'u bul (pack.mcmeta'nın bulunduğu dizin)
+            # Find datapack root (directory containing pack.mcmeta)
             datapack_root=$(dirname "$file")
             datapack_id=$(echo "$datapack_root" | md5sum | cut -d' ' -f1)
             
@@ -157,7 +157,7 @@ jobs:
             # Cache pack format
             echo "$pack_format:$datapack_root" > "/tmp/pack_formats/${datapack_id}.txt"
             
-            # Pack format validasyonu
+            # Pack format validation
             is_valid=0
             for valid_format in "${VALID_FORMATS[@]}"; do
               if [ "$pack_format" -eq "$valid_format" ] 2>/dev/null; then
@@ -188,7 +188,7 @@ jobs:
               warnings=$((warnings + 1))
             fi
 
-            # Description kontrolü
+            # Description check
             if ! jq -e '.pack.description' "$file" > /dev/null 2>&1; then
               echo "    ⚠️  Missing pack.description"
               warnings=$((warnings + 1))
@@ -215,7 +215,7 @@ jobs:
               fi
             fi
 
-            # Geçersiz alanlar (Minecraft tarafından KULLANILMAZ)
+            # Invalid fields (NOT used by Minecraft)
             if jq -e '.pack.min_format' "$file" > /dev/null 2>&1; then
               echo "    ⚠️  'pack.min_format' is NOT a valid Minecraft field"
               echo "       → Use 'pack.supported_formats.min_inclusive' instead"
@@ -240,19 +240,19 @@ jobs:
               warnings=$((warnings + 1))
             fi
 
-            # Filter (geçerli)
+            # Filter (valid)
             if jq -e '.filter' "$file" > /dev/null 2>&1; then
               block_count=$(jq '.filter.block | length' "$file" 2>/dev/null || echo 0)
               echo "    ✓ Filter with $block_count block pattern(s)"
             fi
 
-            # Overlays (geçerli)
+            # Overlays (valid)
             if jq -e '.overlays' "$file" > /dev/null 2>&1; then
               overlay_count=$(jq '.overlays.entries | length' "$file")
               echo "    ✓ Has $overlay_count overlay(s)"
             fi
 
-            # Features (geçerli)
+            # Features (valid)
             if jq -e '.features' "$file" > /dev/null 2>&1; then
               echo "    ✓ Has feature flags"
             fi
@@ -351,7 +351,7 @@ jobs:
           fi
 
       # ─────────────────────────────
-      # MCFUNCTION CONTENT VALIDATION (DÜZELTİLDİ)
+      # MCFUNCTION CONTENT VALIDATION
       # ─────────────────────────────
       - name: Validate Function Files Content
         run: |
@@ -366,10 +366,10 @@ jobs:
           total_lines=0
           total_commands=0
 
-          # Komut uyumluluk matrisi
+          # Command compatibility matrix
           declare -A command_min_format
           
-          # Temel komutlar
+          # Basic commands
           command_min_format["say"]=1
           command_min_format["tell"]=1
           command_min_format["tellraw"]=1
@@ -409,7 +409,7 @@ jobs:
           command_min_format["loot"]=1
           command_min_format["bossbar"]=1
           
-          # Yeni komutlar
+          # New commands
           command_min_format["item"]=81
           command_min_format["damage"]=81
           command_min_format["ride"]=81
@@ -417,7 +417,7 @@ jobs:
           command_min_format["tick"]=81
           command_min_format["random"]=81
           
-          # Özel/mod komutları
+          # Special/mod commands
           command_min_format["dialog"]=1
           
           # Deprecated
@@ -427,11 +427,11 @@ jobs:
           while IFS= read -r -d $'\0' file; do
             total_count=$((total_count + 1))
             
-            # Pack format'ı DOĞRU YÖNTEMLE bul
+            # Find pack format correctly
             current_pack_format=0
             file_dir="$file"
             
-            # datapack/ klasörünü bul
+            # Find datapack/ folder
             while [ "$file_dir" != "/" ] && [ "$file_dir" != "." ]; do
               if [ -f "$file_dir/pack.mcmeta" ]; then
                 datapack_id=$(echo "$file_dir" | md5sum | cut -d' ' -f1)
@@ -459,40 +459,40 @@ jobs:
               continue
             fi
 
-            # CRLF kontrolü
+            # CRLF check
             if grep -q $'\r' "$file"; then
               echo "    ❌ Windows line endings (CRLF) - use LF only"
               error=1
             fi
 
-            # Tab kontrolü
+            # Tab check
             if grep -q $'\t' "$file"; then
               echo "    ⚠️  Contains tabs - use spaces"
               warnings=$((warnings + 1))
             fi
 
-            # Satır satır analiz
+            # Line by line analysis
             line_num=0
             file_commands=0
             
             while IFS= read -r line; do
               line_num=$((line_num + 1))
               
-              # Boş ve yorum kontrolü
+              # Empty and comment check
               [[ "$line" =~ ^[[:space:]]*$ ]] && continue
               [[ "$line" =~ ^[[:space:]]*# ]] && continue
 
               file_commands=$((file_commands + 1))
               total_commands=$((total_commands + 1))
 
-              # Satırı temizle
+              # Clean line
               clean_line=$(echo "$line" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
               [[ "$clean_line" =~ ^/ ]] && clean_line="${clean_line:1}"
               
-              # Komut adı
+              # Command name
               cmd=$(echo "$clean_line" | cut -d' ' -f1)
 
-              # Deprecated kontrolü
+              # Deprecated check
               if [ -n "${deprecated_commands[$cmd]}" ]; then
                 echo "    ❌ Line $line_num: Deprecated command '/$cmd'"
                 echo "       → ${deprecated_commands[$cmd]}"
@@ -500,7 +500,7 @@ jobs:
                 continue
               fi
 
-              # Komut uyumluluk
+              # Command compatibility
               if [ -n "${command_min_format[$cmd]}" ]; then
                 required_format="${command_min_format[$cmd]}"
                 
@@ -537,7 +537,7 @@ jobs:
                 fi
               fi
 
-              # Şüpheli pattern
+              # Suspicious pattern
               if [[ "$clean_line" =~ execute.*run.*execute.*run.*execute ]]; then
                 echo "    ⚠️  Line $line_num: Very deep execute chain"
                 warnings=$((warnings + 1))
@@ -575,7 +575,7 @@ jobs:
           fi
 
       # ─────────────────────────────
-      # MACRO VALIDATION (DÜZELTİLDİ)
+      # MACRO VALIDATION
       # ─────────────────────────────
       - name: Validate Macro System
         run: |
@@ -586,12 +586,11 @@ jobs:
           
           error=0
           files_with_macros=0
-          files_with_invalid_dollar=0
           total_vars=0
 
           while IFS= read -r -d $'\0' file; do
             
-            # Pack format bul
+            # Find pack format
             current_pack_format=0
             file_dir="$file"
             while [ "$file_dir" != "/" ] && [ "$file_dir" != "." ]; do
@@ -607,16 +606,15 @@ jobs:
 
             relative_path=$(echo "$file" | sed "s|^$(pwd)/||")
             
-            # SADECE GERÇEK MAKRO SÖZDİZİMİNİ BUL: $(var)
+            # Only find real macro syntax: $(var)
             macro_vars=$(grep -oP '\$\(\K[a-zA-Z0-9_]+(?=\))' "$file" 2>/dev/null | sort -u)
             macro_count=$(echo "$macro_vars" | grep -c '.' || echo 0)
             
-            # $ VAR AMA $(var) YOK - bu JSONraw, regex vs olabilir
-            # DİKKAT: \$(...) dışında kalan $ kullanımlarını say
+            # $ without $(var) - could be JSONraw, regex, etc.
             dollar_without_macro=$(grep -oP '\$(?!\()' "$file" 2>/dev/null | wc -l || echo 0)
             
             if [ $macro_count -gt 0 ]; then
-              # ✅ GERÇEK MAKRO BULUNDU
+              # Real macro found
               files_with_macros=$((files_with_macros + 1))
               total_vars=$((total_vars + macro_count))
               
@@ -624,15 +622,14 @@ jobs:
               echo "     → Pack format: $current_pack_format"
               echo "     → Macro variables ($macro_count): $(echo $macro_vars | tr '\n' ', ' | sed 's/, $//')"
               
-              # Pack format kontrolü
+              # Pack format check
               if [ "$current_pack_format" -gt 0 ] && [ "$current_pack_format" -lt 81 ]; then
                 echo "     ❌ ERROR: Macros require pack_format 81+"
                 error=1
               fi
               
             elif [ $dollar_without_macro -gt 0 ]; then
-              # $ var ama $(var) yok
-              # Bu JSONraw, regex, NBT olabilir - uyarı ver ama hata verme
+              # $ but no $(var)
               echo "  ℹ️  $relative_path"
               echo "     → Contains $ character (likely in JSON/NBT, not macros)"
               echo "     → If you intend to use macros, use \$(variable_name) syntax"
