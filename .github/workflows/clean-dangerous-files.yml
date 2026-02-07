@@ -12,7 +12,7 @@ on:
 jobs:
   clean-files:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -24,17 +24,13 @@ jobs:
         id: scan
         run: |
           set -euo pipefail
-          
+
           echo "🔍 Scanning for dangerous files in new_versions/*datapack*"
-          
-          # Tehlikeli uzantılar (datapack-only repo için)
-          # NOT: .jar dahil - eğer Fabric/Forge mod tutarsanız bu satırı düzenleyin!
-          # Whitelist yaklaşımı için: sadece .mcfunction, .json, .nbt, .png izin ver
+
           DANGEROUS_EXTENSIONS=("sh" "js" "exe" "bat" "cmd" "ps1" "py" "rb" "pl" "jar" "dll" "so" "dylib" "vbs" "com" "msi" "app" "deb" "rpm")
-          
+
           DELETED_FILES=()
-          
-          # Tek find ile tüm uzantıları yakala (performans optimizasyonu)
+
           FIND_PATTERN=""
           for ext in "${DANGEROUS_EXTENSIONS[@]}"; do
             if [ -z "$FIND_PATTERN" ]; then
@@ -43,63 +39,32 @@ jobs:
               FIND_PATTERN="$FIND_PATTERN -o -name *.$ext"
             fi
           done
-          
-          # Derin tarama: new_versions altında datapack içeren HER yol
+
           while IFS= read -r -d '' file; do
             echo "⚠️  Found dangerous file: $file"
-            
-            # PR'da sadece uyar, silme
+
             if [ "${{ github.event_name }}" == "pull_request" ]; then
-              # Dosya uzantısını çıkar
               ext="${file##*.}"
-              echo "::error file=$file,title=Security: Dangerous file detected::.$ext files are not allowed in Minecraft datapacks for security reasons."
+              echo "::error file=$file,title=Security: Dangerous file detected::.$ext files are not allowed in Minecraft datapacks."
               DELETED_FILES+=("$file")
             else
-              # Push'ta sil
               rm -f "$file"
               DELETED_FILES+=("$file")
               echo "🗑️  Deleted: $file"
             fi
           done < <(find new_versions -type f \( $FIND_PATTERN \) -path "*datapack*" -print0 2>/dev/null | sort -z -u)
-          
-          # Sonuç
+
           FILE_COUNT=${#DELETED_FILES[@]}
-          
+
           if [ $FILE_COUNT -eq 0 ]; then
-            echo "✅ No dangerous files found. Datapack is clean!"
+            echo "✅ No dangerous files found."
             echo "file_count=0" >> $GITHUB_OUTPUT
           else
-            echo "🛡️  Total files found: $FILE_COUNT"
             echo "file_count=$FILE_COUNT" >> $GITHUB_OUTPUT
-            
-            # Log dosyası (sıralı, benzersiz)
             printf '%s\n' "${DELETED_FILES[@]}" | sort -u > deleted_files.log
-            
-            # PR'da fail ver + kullanıcı dostu mesaj
+
             if [ "${{ github.event_name }}" == "pull_request" ]; then
-              echo ""
-              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-              echo "⛔ PR BLOCKED: Security policy violation"
-              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-              echo ""
-              echo "📋 Found $FILE_COUNT dangerous file(s) in datapack directories."
-              echo ""
-              echo "🛡️  Security Policy:"
-              echo "   Minecraft datapacks should only contain:"
-              echo "   • .mcfunction (commands)"
-              echo "   • .json (metadata, recipes, etc.)"
-              echo "   • .nbt (structure files)"
-              echo "   • .png (textures, if applicable)"
-              echo ""
-              echo "   Script files (.sh, .js, .py, etc.) and executables"
-              echo "   are prohibited for security reasons."
-              echo ""
-              echo "📝 Action required:"
-              echo "   Please remove the files listed above and push again."
-              echo ""
-              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-              echo ""
-              echo "::error::PR contains $FILE_COUNT dangerous file(s). See file annotations and logs above."
+              echo "::error::PR contains dangerous files."
               exit 1
             fi
           fi
@@ -108,30 +73,16 @@ jobs:
         if: github.event_name != 'pull_request' && steps.scan.outputs.file_count != '0'
         run: |
           set -euo pipefail
-          
+
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          
+
           if [ -n "$(git status --porcelain)" ]; then
-            FILE_COUNT=$(cat deleted_files.log | wc -l)
-            
+            FILE_COUNT=$(wc -l < deleted_files.log)
+
             git add -A
-            git commit -m "🛡️ Security: Auto-removed $FILE_COUNT dangerous file(s) from datapack
-
-Automated security cleanup by GitHub Actions.
-Files containing executable code or scripts are not permitted
-in Minecraft datapack directories.
-
-See workflow artifacts for complete deletion log.
-
-Workflow: ${{ github.workflow }}
-Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-Commit: ${{ github.sha }}"
-            
+            git commit -m "🛡️ Security: Auto-removed $FILE_COUNT dangerous file(s)"
             git push
-            echo "✅ Changes committed and pushed"
-          else
-            echo "✅ No changes to commit"
           fi
 
       - name: Upload deletion log
@@ -147,70 +98,5 @@ Commit: ${{ github.sha }}"
         run: |
           echo "## 🛡️ Security Scan Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          
-          if [ -f deleted_files.log ]; then
-            FILE_COUNT=$(cat deleted_files.log | wc -l)
-            
-            echo "**Scan date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
-            echo "**Files processed:** $FILE_COUNT" >> $GITHUB_STEP_SUMMARY
-            echo "**Event type:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            
-            if [ "${{ github.event_name }}" == "pull_request" ]; then
-              echo "### ⛔ Action: PR Blocked" >> $GITHUB_STEP_SUMMARY
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "This pull request contains dangerous files in datapack directories." >> $GITHUB_STEP_SUMMARY
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "**Security policy:** Minecraft datapacks should only contain:" >> $GITHUB_STEP_SUMMARY
-              echo "- \`.mcfunction\` (command files)" >> $GITHUB_STEP_SUMMARY
-              echo "- \`.json\` (metadata, recipes, advancements)" >> $GITHUB_STEP_SUMMARY
-              echo "- \`.nbt\` (structure files)" >> $GITHUB_STEP_SUMMARY
-              echo "- \`.png\` (textures)" >> $GITHUB_STEP_SUMMARY
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "Script files and executables are prohibited." >> $GITHUB_STEP_SUMMARY
-            else
-              echo "### ✅ Action: Files Automatically Removed" >> $GITHUB_STEP_SUMMARY
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "Dangerous files were detected and automatically removed from the repository." >> $GITHUB_STEP_SUMMARY
-            fi
-            
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "<details>" >> $GITHUB_STEP_SUMMARY
-            echo "<summary>🗑️ Affected files (click to expand)</summary>" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            
-            # İlk 50 dosya
-            head -n 50 deleted_files.log >> $GITHUB_STEP_SUMMARY
-            
-            # 50'den fazlaysa
-            if [ $FILE_COUNT -gt 50 ]; then
-              REMAINING=$((FILE_COUNT - 50))
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "... and $REMAINING more file(s)" >> $GITHUB_STEP_SUMMARY
-              echo "(Download artifact 'deletion-log-${{ github.run_number }}-${{ github.run_attempt }}' for complete list)" >> $GITHUB_STEP_SUMMARY
-            fi
-            
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo "</details>" >> $GITHUB_STEP_SUMMARY
-            
-            # Uzantı istatistikleri
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "<details>" >> $GITHUB_STEP_SUMMARY
-            echo "<summary>📊 File type breakdown</summary>" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            awk -F. '{print $NF}' deleted_files.log | sort | uniq -c | sort -rn >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo "</details>" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "**Scan date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### ✅ Clean" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "No dangerous files found in datapack directories. Repository is secure." >> $GITHUB_STEP_SUMMARY
-          fi
-          
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "---" >> $GITHUB_STEP_SUMMARY
-          echo "*Workflow: \`${{ github.workflow }}\` • Run #${{ github.run_number }}*" >> $GITHUB_STEP_SUMMARY
+          echo "**Workflow:** \`${{ github.workflow }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Run:** #${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
