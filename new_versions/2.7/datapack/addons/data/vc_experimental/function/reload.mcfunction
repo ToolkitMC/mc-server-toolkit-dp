@@ -1,1 +1,1 @@
-execute run reload
+reload
