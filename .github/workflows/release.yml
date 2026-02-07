@@ -1,0 +1,80 @@
+name: Release Datapack
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'new_versions/**/datapack/**'
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      
+    - name: Get Latest Version
+      id: version
+      run: |
+        # En son MC versiyonunu bul (güvenli şekilde)
+        latest_version=$(find new_versions -maxdepth 1 -mindepth 1 -type d -printf '%f\n' 2>/dev/null | sort -V | tail -n 1)
+        
+        # Klasör boşsa çık
+        if [ -z "$latest_version" ]; then
+          echo "Error: No versions found in new_versions/"
+          exit 1
+        fi
+        
+        echo "mc_version=$latest_version" >> $GITHUB_OUTPUT
+        
+        # pack_format'ı al (Perl regex olmadan)
+        if [ -f "new_versions/$latest_version/datapack/pack.mcmeta" ]; then
+          pack_format=$(grep '"pack_format"' "new_versions/$latest_version/datapack/pack.mcmeta" | grep -o '[0-9]\+' | head -n 1)
+          pack_format=${pack_format:-1}
+        else
+          pack_format="1"
+        fi
+        
+        # Temiz version tag oluştur
+        echo "version=v${latest_version}" >> $GITHUB_OUTPUT
+        echo "pack_format=${pack_format}" >> $GITHUB_OUTPUT
+    
+    - name: Package Datapack
+      run: |
+        cd new_versions/${{ steps.version.outputs.mc_version }}/datapack
+        zip -r "$GITHUB_WORKSPACE/mc-server-toolkit-${{ steps.version.outputs.mc_version }}.zip" .
+        
+    - name: Verify ZIP
+      run: |
+        echo "ZIP içeriği:"
+        unzip -l mc-server-toolkit-${{ steps.version.outputs.mc_version }}.zip
+        
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ steps.version.outputs.version }}
+        name: "MC Server Toolkit for ${{ steps.version.outputs.mc_version }}"
+        files: mc-server-toolkit-${{ steps.version.outputs.mc_version }}.zip
+        body: |
+          ## Minecraft Server Toolkit Datapack
+          
+          **Minecraft Version:** ${{ steps.version.outputs.mc_version }}
+          **Pack Format:** ${{ steps.version.outputs.pack_format }}
+          **Build Date:** ${{ github.run_started_at }}
+          
+          ### Installation
+          1. Download `mc-server-toolkit-${{ steps.version.outputs.mc_version }}.zip`
+          2. Place in your world's `datapacks` folder
+          3. Run `/reload` in-game
+        draft: false
+        prerelease: false
+        make_latest: true
+        fail_on_unmatched_files: true
+        overwrite_files: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
