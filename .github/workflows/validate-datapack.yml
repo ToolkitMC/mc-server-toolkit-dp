@@ -546,11 +546,6 @@ jobs:
             suspicious_patterns["clickEvent.*run_command.*sudo"]="CRITICAL: Sudo-like pattern in clickEvent"
             suspicious_patterns["hoverEvent.*run_command.*op"]="CRITICAL: HoverEvent grants OP - backdoor"
             
-            # Book menu phishing detection
-            suspicious_patterns["give.*written_book.*pages.*clickEvent"]="CRITICAL: Giving book with clickable content - verify legitimacy"
-            suspicious_patterns["pages.*clickEvent.*open_url"]="CRITICAL: Book with URL links - phishing risk"
-            suspicious_patterns["clickEvent.*run_command.*transfer"]="WARNING: ClickEvent with /transfer - verify legitimate"
-            
             echo "  🔍 Scanning for backdoors & code injection..."
             echo "     • OP privilege escalation"
             echo "     • JavaScript/external code execution"
@@ -558,6 +553,60 @@ jobs:
             echo "     • Unauthorized system access"
             echo "     • Book-based phishing"
             echo ""
+            
+            # First: Scan mcfunction files for book menus
+            echo "  📚 Scanning for book menu systems..."
+            book_menu_count=0
+            
+            while IFS= read -r -d $'\0' file; do
+              relative_path=$(echo "$file" | sed "s|^$(pwd)/||")
+              line_num=0
+              file_has_books=0
+              
+              while IFS= read -r line; do
+                line_num=$((line_num + 1))
+                [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+                [[ "$line" =~ ^[[:space:]]*# ]] && continue
+                
+                # Detect written_book with pages in give/item/data commands
+                if [[ "$line" =~ (give|item|data).*written_book.*pages ]]; then
+                  if [ $file_has_books -eq 0 ]; then
+                    echo "  📖 $relative_path - Contains book menu system:"
+                    file_has_books=1
+                    book_menu_count=$((book_menu_count + 1))
+                  fi
+                  
+                  # Check for phishing indicators
+                  if [[ "$line" =~ clickEvent ]]; then
+                    if [[ "$line" =~ open_url ]]; then
+                      echo "     🚨 Line $line_num: CRITICAL - Book with URL clickEvent (phishing)"
+                      sec_warnings=$((sec_warnings + 1))
+                      SECURITY_ISSUES=$((SECURITY_ISSUES + 1))
+                    elif [[ "$line" =~ run_command.*op ]]; then
+                      echo "     🚨 Line $line_num: CRITICAL - Book grants OP via clickEvent"
+                      sec_warnings=$((sec_warnings + 1))
+                      SECURITY_ISSUES=$((SECURITY_ISSUES + 1))
+                    else
+                      echo "     ⚠️  Line $line_num: Book with clickEvent - verify legitimacy"
+                      echo "        Preview: ${line:0:100}..."
+                    fi
+                  else
+                    echo "     ℹ️  Line $line_num: Book menu (no clickEvents)"
+                  fi
+                fi
+              done < "$file"
+              
+            done < <(find new_versions -path "*/datapack/data/*/function/*.mcfunction" -type f -print0)
+            
+            if [ $book_menu_count -gt 0 ]; then
+              echo "  📊 Found $book_menu_count function(s) with book menu systems"
+            else
+              echo "  ✅ No book menu systems detected in functions"
+            fi
+            echo ""
+            
+            # Then: Scan for other security patterns
+            echo "  🔍 Scanning for other security threats..."
             
             while IFS= read -r -d $'\0' file; do
               relative_path=$(echo "$file" | sed "s|^$(pwd)/||")
