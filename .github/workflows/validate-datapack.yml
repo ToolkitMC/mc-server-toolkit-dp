@@ -1,4 +1,4 @@
-name: Validate Datapack (Final)
+name: Validate Datapack (Complete)
 
 on:
   pull_request:
@@ -32,8 +32,365 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y jq tree bc
+          sudo apt-get install -y jq tree bc python3
           echo "✅ Dependencies installed"
+
+      - name: Setup Python Validator
+        run: |
+          cat > /tmp/validator.py << 'VALIDATOR_EOF'
+#!/usr/bin/env python3
+"""
+Minecraft Command Validator - Enhanced Version
+Validates .mcfunction files for security threats and suspicious patterns
+"""
+
+import re
+import json
+import sys
+from typing import List, Dict, Tuple
+from dataclasses import dataclass, asdict
+from pathlib import Path
+
+@dataclass
+class Finding:
+    """Security finding"""
+    line_number: int
+    severity: str  # CRITICAL, WARNING, INFO
+    category: str
+    message: str
+    command: str
+    pattern: str = ""
+    
+    def to_dict(self):
+        return asdict(self)
+
+class CommandValidator:
+    """Enhanced Minecraft command security validator"""
+    
+    # Emoji mapping
+    EMOJI = {
+        'CRITICAL': '🚨',
+        'WARNING': '⚠️',
+        'INFO': 'ℹ️',
+        'SAFE': '✅'
+    }
+    
+    # Kritik tehlikeli komutlar
+    CRITICAL_PATTERNS = {
+        r'/op\s+': 'Grants operator privileges',
+        r'/deop\s+@a': 'Removes all operator privileges',
+        r'/stop': 'Stops the server',
+        r'/restart': 'Restarts the server',
+        r'/whitelist\s+off': 'Disables whitelist protection',
+        r'/ban-ip\s+': 'IP ban command',
+        r'/pardon-ip\s+': 'Removes IP ban',
+        r'/execute\s+.*run\s+rm\s+-rf': 'Dangerous file deletion',
+        r'/transfer\s+': 'Player transfer (potential redirect)',
+        r'open_url.*://': 'External URL (phishing risk)',
+    }
+    
+    # Şüpheli patternler
+    SUSPICIOUS_PATTERNS = {
+        r'clickEvent.*run_command': 'Interactive book/sign command',
+        r'/give.*written_book': 'Gives clickable book',
+        r'/gamemode\s+(creative|spectator)': 'Changes gamemode',
+        r'/tp\s+@[aps]\s+[~-]?\d+': 'Teleportation command',
+        r'/function\s+.*:.*': 'Function call (verify source)',
+        r'/data\s+merge': 'Data manipulation',
+        r'/execute\s+as\s+@[ae]': 'Execute as all entities/players',
+        r'/clear\s+@a': 'Clears all player inventories',
+        r'/kill\s+@[ae]': 'Kills entities/players',
+    }
+    
+    # Backdoor indicators
+    BACKDOOR_INDICATORS = {
+        r'author.*[Hh]acker': 'Suspicious author name',
+        r'author.*[Rr]oot': 'Suspicious author name',
+        r'author.*[Aa]dmin.*[Pp]anel': 'Suspicious title pattern',
+        r'title.*[Ss]ecret': 'Hidden functionality indicator',
+        r'title.*[Hh]idden': 'Hidden functionality indicator',
+        r'clickEvent.*value.*op': 'OP grant via click',
+        r'clickEvent.*value.*gamemode': 'Gamemode change via click',
+    }
+    
+    # URL patterns
+    URL_PATTERNS = {
+        r'http://[^"\']+': 'Unencrypted HTTP URL',
+        r'https?://[^/]*\.tk[/"\']': 'Free domain (phishing risk)',
+        r'https?://[^/]*\.ml[/"\']': 'Free domain (phishing risk)',
+        r'https?://[^/]*\.ga[/"\']': 'Free domain (phishing risk)',
+        r'open_url': 'URL click action',
+    }
+    
+    # JavaScript/Injection patterns
+    INJECTION_PATTERNS = {
+        r'<script': 'JavaScript injection attempt',
+        r'javascript:': 'JavaScript protocol',
+        r'onerror\s*=': 'JavaScript event handler',
+        r'eval\s*\(': 'Code evaluation',
+        r'{{.*}}': 'Template injection pattern',
+    }
+    
+    def __init__(self):
+        self.findings: List[Finding] = []
+        self.stats = {
+            'total_lines': 0,
+            'command_lines': 0,
+            'critical': 0,
+            'warnings': 0,
+            'info': 0
+        }
+    
+    def validate_line(self, line: str, line_num: int) -> List[Finding]:
+        """Validate a single line and return findings"""
+        findings = []
+        
+        # Skip comments and empty lines
+        if not line.strip() or line.strip().startswith('#'):
+            return findings
+        
+        self.stats['command_lines'] += 1
+        
+        # Check critical patterns
+        for pattern, desc in self.CRITICAL_PATTERNS.items():
+            if re.search(pattern, line, re.IGNORECASE):
+                findings.append(Finding(
+                    line_number=line_num,
+                    severity='CRITICAL',
+                    category='dangerous_command',
+                    message=f'CRITICAL - {desc}',
+                    command=line.strip(),
+                    pattern=pattern
+                ))
+                self.stats['critical'] += 1
+        
+        # Check backdoor indicators
+        for pattern, desc in self.BACKDOOR_INDICATORS.items():
+            if re.search(pattern, line, re.IGNORECASE):
+                findings.append(Finding(
+                    line_number=line_num,
+                    severity='CRITICAL',
+                    category='backdoor',
+                    message=f'BACKDOOR - {desc}',
+                    command=line.strip(),
+                    pattern=pattern
+                ))
+                self.stats['critical'] += 1
+        
+        # Check URL patterns
+        for pattern, desc in self.URL_PATTERNS.items():
+            if re.search(pattern, line, re.IGNORECASE):
+                findings.append(Finding(
+                    line_number=line_num,
+                    severity='CRITICAL',
+                    category='phishing',
+                    message=f'PHISHING RISK - {desc}',
+                    command=line.strip(),
+                    pattern=pattern
+                ))
+                self.stats['critical'] += 1
+        
+        # Check injection patterns
+        for pattern, desc in self.INJECTION_PATTERNS.items():
+            if re.search(pattern, line, re.IGNORECASE):
+                findings.append(Finding(
+                    line_number=line_num,
+                    severity='CRITICAL',
+                    category='injection',
+                    message=f'INJECTION - {desc}',
+                    command=line.strip(),
+                    pattern=pattern
+                ))
+                self.stats['critical'] += 1
+        
+        # Check suspicious patterns (if no critical found)
+        if not findings:
+            for pattern, desc in self.SUSPICIOUS_PATTERNS.items():
+                if re.search(pattern, line, re.IGNORECASE):
+                    findings.append(Finding(
+                        line_number=line_num,
+                        severity='WARNING',
+                        category='suspicious',
+                        message=f'{desc} - verify legitimacy',
+                        command=line.strip(),
+                        pattern=pattern
+                    ))
+                    self.stats['warnings'] += 1
+                    break
+        
+        # Check for book menus without clickEvents (safe)
+        if 'written_book' in line and 'clickEvent' not in line:
+            findings.append(Finding(
+                line_number=line_num,
+                severity='INFO',
+                category='safe',
+                message='Book menu (no clickEvents)',
+                command=line.strip()[:80] + '...' if len(line) > 80 else line.strip()
+            ))
+            self.stats['info'] += 1
+        
+        return findings
+    
+    def validate_file(self, filepath: str) -> Dict:
+        """Validate entire file"""
+        self.findings = []
+        
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+        except Exception as e:
+            return {'error': f'Failed to read file: {e}'}
+        
+        self.stats['total_lines'] = len(lines)
+        
+        for i, line in enumerate(lines, 1):
+            findings = self.validate_line(line, i)
+            self.findings.extend(findings)
+        
+        return self.generate_report()
+    
+    def generate_report(self) -> Dict:
+        """Generate comprehensive report"""
+        report = {
+            'summary': {
+                'total_lines': self.stats['total_lines'],
+                'command_lines': self.stats['command_lines'],
+                'total_findings': len(self.findings),
+                'critical': self.stats['critical'],
+                'warnings': self.stats['warnings'],
+                'info': self.stats['info'],
+                'risk_level': self.calculate_risk_level()
+            },
+            'findings': [f.to_dict() for f in self.findings],
+            'findings_by_category': self.group_by_category(),
+            'findings_by_severity': self.group_by_severity()
+        }
+        return report
+    
+    def calculate_risk_level(self) -> str:
+        """Calculate overall risk level"""
+        if self.stats['critical'] > 0:
+            return 'HIGH'
+        elif self.stats['warnings'] > 3:
+            return 'MEDIUM'
+        elif self.stats['warnings'] > 0:
+            return 'LOW'
+        return 'SAFE'
+    
+    def group_by_category(self) -> Dict:
+        """Group findings by category"""
+        categories = {}
+        for finding in self.findings:
+            cat = finding.category
+            if cat not in categories:
+                categories[cat] = []
+            categories[cat].append(finding.to_dict())
+        return categories
+    
+    def group_by_severity(self) -> Dict:
+        """Group findings by severity"""
+        severities = {'CRITICAL': [], 'WARNING': [], 'INFO': []}
+        for finding in self.findings:
+            severities[finding.severity].append(finding.to_dict())
+        return severities
+    
+    def print_console_report(self):
+        """Print human-readable console report"""
+        print("\n" + "="*70)
+        print("🛡️  MINECRAFT COMMAND VALIDATOR - SECURITY REPORT")
+        print("="*70)
+        
+        # Summary
+        print(f"\n📊 SUMMARY:")
+        print(f"   Total Lines: {self.stats['total_lines']}")
+        print(f"   Command Lines: {self.stats['command_lines']}")
+        print(f"   Total Findings: {len(self.findings)}")
+        print(f"   🚨 Critical: {self.stats['critical']}")
+        print(f"   ⚠️  Warnings: {self.stats['warnings']}")
+        print(f"   ℹ️  Info: {self.stats['info']}")
+        print(f"   Risk Level: {self.calculate_risk_level()}")
+        
+        # Findings
+        if self.findings:
+            print(f"\n🔍 DETAILED FINDINGS:\n")
+            
+            # Critical first
+            critical = [f for f in self.findings if f.severity == 'CRITICAL']
+            if critical:
+                print("🚨 CRITICAL ISSUES:")
+                for finding in critical:
+                    print(f"   Line {finding.line_number}: {finding.message}")
+                    print(f"   → {finding.command[:100]}")
+                    if finding.pattern:
+                        print(f"   Pattern: {finding.pattern}")
+                    print()
+            
+            # Then warnings
+            warnings = [f for f in self.findings if f.severity == 'WARNING']
+            if warnings:
+                print("⚠️  WARNINGS:")
+                for finding in warnings:
+                    print(f"   Line {finding.line_number}: {finding.message}")
+                    print(f"   → {finding.command[:100]}")
+                    print()
+            
+            # Info last
+            info = [f for f in self.findings if f.severity == 'INFO']
+            if info:
+                print("ℹ️  INFORMATIONAL:")
+                for finding in info[:5]:
+                    print(f"   Line {finding.line_number}: {finding.message}")
+                if len(info) > 5:
+                    print(f"   ... and {len(info) - 5} more")
+                print()
+        
+        print("="*70)
+        
+        # Recommendations
+        if self.stats['critical'] > 0:
+            print("\n⛔ RECOMMENDATION: DO NOT USE THIS FILE!")
+            print("   Contains critical security issues that could compromise your server.")
+        elif self.stats['warnings'] > 0:
+            print("\n⚠️  RECOMMENDATION: Review carefully before use")
+            print("   Contains suspicious patterns that need verification.")
+        else:
+            print("\n✅ RECOMMENDATION: File appears safe to use")
+        
+        print()
+
+def main():
+    """Main entry point"""
+    if len(sys.argv) < 2:
+        print("Usage: python validator.py <file.mcfunction> [--json]")
+        sys.exit(1)
+    
+    filepath = sys.argv[1]
+    json_output = '--json' in sys.argv
+    
+    if not Path(filepath).exists():
+        print(f"Error: File not found: {filepath}")
+        sys.exit(1)
+    
+    validator = CommandValidator()
+    report = validator.validate_file(filepath)
+    
+    if 'error' in report:
+        print(f"Error: {report['error']}")
+        sys.exit(1)
+    
+    if json_output:
+        print(json.dumps(report, indent=2))
+    else:
+        validator.print_console_report()
+    
+    sys.exit(1 if report['summary']['critical'] > 0 else 0)
+
+if __name__ == '__main__':
+    main()
+VALIDATOR_EOF
+          
+          chmod +x /tmp/validator.py
+          echo "✅ Python validator created"
 
       - name: Validate Datapack (All Checks)
         id: validation
@@ -75,7 +432,7 @@ jobs:
               failed_files+=("$file")
               json_error=1
             fi
-          done < <(find new_versions -name "*.json" -type f -print0)
+          done < <(find new_versions -name "*.json" -type f -print0 2>/dev/null || true)
           
           if [ $json_error -eq 0 ]; then
             echo "  ✅ All $json_count JSON files are valid"
@@ -135,7 +492,7 @@ jobs:
               mcmeta_warnings=$((mcmeta_warnings + 1))
             fi
             
-          done < <(find new_versions -path "*/datapack/pack.mcmeta" -type f -print0)
+          done < <(find new_versions -path "*/datapack/pack.mcmeta" -type f -print0 2>/dev/null || true)
           
           if [ $mcmeta_count -eq 0 ]; then
             echo "  ❌ No pack.mcmeta files found"
@@ -189,9 +546,9 @@ jobs:
                 [ -d "$namespace/enchantment" ] && echo "        ✨ enchantments/"
                 [ -d "$namespace/jukebox_song" ] && echo "        🎵 jukebox_songs/"
                 
-              done < <(find "$dir/data" -mindepth 1 -maxdepth 1 -type d -print0)
+              done < <(find "$dir/data" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null || true)
             fi
-          done < <(find new_versions -path "*/datapack/pack.mcmeta" -type f -print0)
+          done < <(find new_versions -path "*/datapack/pack.mcmeta" -type f -print0 2>/dev/null || true)
           
           if [ $struct_error -eq 0 ]; then
             echo "  ✅ Structure validation passed"
@@ -202,7 +559,7 @@ jobs:
           echo ""
           
           # ═══════════════════════════════════════════════════
-          # 4. FUNCTION FILES VALIDATION
+          # 4. FUNCTION FILES VALIDATION (COMPREHENSIVE)
           # ═══════════════════════════════════════════════════
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "⚙️  [4/8] Validating Functions..."
@@ -213,10 +570,16 @@ jobs:
           total_funcs=0
           total_commands=0
           
-          # Command compatibility matrix
+          # ★ COMPREHENSIVE Command compatibility matrix (ALL MINECRAFT COMMANDS)
           declare -A command_min_format
+          
+          # Basic commands (1.13+, pack_format 1+)
           command_min_format["say"]=1
           command_min_format["tellraw"]=1
+          command_min_format["tell"]=1
+          command_min_format["msg"]=1
+          command_min_format["w"]=1
+          command_min_format["me"]=1
           command_min_format["execute"]=1
           command_min_format["scoreboard"]=1
           command_min_format["function"]=1
@@ -232,6 +595,7 @@ jobs:
           command_min_format["setblock"]=1
           command_min_format["clone"]=1
           command_min_format["playsound"]=1
+          command_min_format["stopsound"]=1
           command_min_format["particle"]=1
           command_min_format["effect"]=1
           command_min_format["enchant"]=1
@@ -249,30 +613,121 @@ jobs:
           command_min_format["worldborder"]=1
           command_min_format["schedule"]=1
           command_min_format["forceload"]=1
-          command_min_format["locatebiome"]=1
           command_min_format["locate"]=1
           command_min_format["spectate"]=1
           command_min_format["spawnpoint"]=1
           command_min_format["setworldspawn"]=1
+          command_min_format["difficulty"]=1
+          command_min_format["gamerule"]=1
+          command_min_format["advancement"]=1
+          command_min_format["recipe"]=1
+          command_min_format["reload"]=1
+          command_min_format["seed"]=1
+          command_min_format["defaultgamemode"]=1
+          command_min_format["list"]=1
+          command_min_format["help"]=1
+          command_min_format["ban"]=1
+          command_min_format["ban-ip"]=1
+          command_min_format["banlist"]=1
+          command_min_format["pardon"]=1
+          command_min_format["pardon-ip"]=1
+          command_min_format["kick"]=1
+          command_min_format["op"]=1
+          command_min_format["deop"]=1
+          command_min_format["whitelist"]=1
+          command_min_format["save-all"]=1
+          command_min_format["save-on"]=1
+          command_min_format["save-off"]=1
+          command_min_format["stop"]=1
+          command_min_format["publish"]=1
+          command_min_format["debug"]=1
+          command_min_format["perf"]=1
+          command_min_format["jfr"]=1
+          command_min_format["loot"]=1
+          command_min_format["fillbiome"]=1
+          command_min_format["place"]=1
+          command_min_format["jukebox"]=1
+          command_min_format["spreadplayers"]=1
+          
+          # 1.20.2+ commands (pack_format 18+, mapping to 81)
           command_min_format["item"]=81
           command_min_format["damage"]=81
           command_min_format["ride"]=81
           command_min_format["return"]=81
           command_min_format["tick"]=81
           command_min_format["random"]=81
-          command_min_format["transfer"]=48
           
+          # 1.21+ commands (pack_format 48+)
+          command_min_format["transfer"]=48
+          command_min_format["dialog"]=48
+          
+          # Deprecated commands
           declare -A deprecated_commands
           deprecated_commands["replaceitem"]="Use /item replace (requires pack_format 81+)"
+          deprecated_commands["locatebiome"]="Use /locate biome (1.19+)"
           
+          # ★ COMPREHENSIVE Execute subcommands (ALL VARIANTS)
           declare -A execute_subcommands
-          execute_subcommands["if biome"]=81
-          execute_subcommands["unless biome"]=81
-          execute_subcommands["if loaded"]=48
-          execute_subcommands["unless loaded"]=48
-          execute_subcommands["if dimension"]=1
-          execute_subcommands["unless dimension"]=1
-          execute_subcommands["on"]=48
+          
+          # Basic subcommands (1.13+)
+          execute_subcommands["as "]=1
+          execute_subcommands["at "]=1
+          execute_subcommands["positioned "]=1
+          execute_subcommands["rotated "]=1
+          execute_subcommands["facing "]=1
+          execute_subcommands["align "]=1
+          execute_subcommands["anchored "]=1
+          execute_subcommands["in "]=1
+          execute_subcommands["if "]=1
+          execute_subcommands["unless "]=1
+          execute_subcommands["store "]=1
+          execute_subcommands["run "]=1
+          
+          # Execute conditions (1.13+)
+          execute_subcommands["if block "]=1
+          execute_subcommands["unless block "]=1
+          execute_subcommands["if blocks "]=1
+          execute_subcommands["unless blocks "]=1
+          execute_subcommands["if entity "]=1
+          execute_subcommands["unless entity "]=1
+          execute_subcommands["if score "]=1
+          execute_subcommands["unless score "]=1
+          execute_subcommands["if predicate "]=1
+          execute_subcommands["unless predicate "]=1
+          execute_subcommands["if data "]=1
+          execute_subcommands["unless data "]=1
+          
+          # 1.19.3+ execute conditions (pack_format 12+, mapping to 1)
+          execute_subcommands["if dimension "]=1
+          execute_subcommands["unless dimension "]=1
+          execute_subcommands["if function "]=1
+          execute_subcommands["unless function "]=1
+          
+          # 1.20.2+ execute conditions (pack_format 18+, mapping to 81)
+          execute_subcommands["if biome "]=81
+          execute_subcommands["unless biome "]=81
+          execute_subcommands["if loaded "]=81
+          execute_subcommands["unless loaded "]=81
+          execute_subcommands["if items "]=81
+          execute_subcommands["unless items "]=81
+          
+          # 1.21+ execute features (pack_format 48+)
+          execute_subcommands["on "]=48
+          execute_subcommands["summon "]=48
+          
+          # 1.21+ execute on relations (pack_format 48+)
+          execute_subcommands["on attacker"]=48
+          execute_subcommands["on controller"]=48
+          execute_subcommands["on leasher"]=48
+          execute_subcommands["on origin"]=48
+          execute_subcommands["on owner"]=48
+          execute_subcommands["on passengers"]=48
+          execute_subcommands["on target"]=48
+          execute_subcommands["on vehicle"]=48
+          
+          # Execute store variants
+          execute_subcommands["store result "]=1
+          execute_subcommands["store success "]=1
           
           while IFS= read -r -d $'\0' file; do
             total_funcs=$((total_funcs + 1))
@@ -306,6 +761,7 @@ jobs:
               [[ "$clean_line" =~ ^/ ]] && clean_line="${clean_line:1}"
               cmd=$(echo "$clean_line" | awk '{print $1}')
               
+              # Check deprecated commands
               if [ -n "${deprecated_commands[$cmd]}" ]; then
                 echo "  ❌ $relative_path:$line_num - Deprecated: /$cmd"
                 echo "     💡 ${deprecated_commands[$cmd]}"
@@ -313,6 +769,7 @@ jobs:
                 continue
               fi
               
+              # Check command compatibility
               if [ -n "${command_min_format[$cmd]}" ]; then
                 required_format="${command_min_format[$cmd]}"
                 if [ "$current_pack_format" -gt 0 ] && [ "$current_pack_format" -lt "$required_format" ]; then
@@ -324,6 +781,7 @@ jobs:
                 func_warnings=$((func_warnings + 1))
               fi
               
+              # ★ Check ALL execute subcommands
               if [[ "$clean_line" =~ ^execute ]]; then
                 for sub in "${!execute_subcommands[@]}"; do
                   if [[ "$clean_line" =~ $sub ]]; then
@@ -334,27 +792,13 @@ jobs:
                     fi
                   fi
                 done
-                
-                if [[ "$clean_line" =~ execute[[:space:]]+on[[:space:]]+(attacker|controller|leasher|origin|owner|passengers|target|vehicle) ]]; then
-                  if [ "$current_pack_format" -gt 0 ] && [ "$current_pack_format" -lt 48 ]; then
-                    echo "  ❌ $relative_path:$line_num - 'execute on <relation>' requires pack_format 48+"
-                    func_error=1
-                  fi
-                fi
-              fi
-              
-              if [[ "$cmd" == "transfer" ]]; then
-                if [ "$current_pack_format" -gt 0 ] && [ "$current_pack_format" -lt 48 ]; then
-                  echo "  ❌ $relative_path:$line_num - /transfer requires pack_format 48+ (Minecraft 1.21)"
-                  func_error=1
-                fi
               fi
               
             done < "$file"
             
             [ $file_cmd_count -gt 0 ] && echo "  ✓ $relative_path ($file_cmd_count commands)"
             
-          done < <(find new_versions -path "*/datapack/data/*/function/*.mcfunction" -type f -print0)
+          done < <(find new_versions -path "*/datapack/data/*/function/*.mcfunction" -type f -print0 2>/dev/null || true)
           
           echo "  📊 Total: $total_funcs files, $total_commands commands"
           
@@ -411,7 +855,7 @@ jobs:
                 macro_error=1
               fi
             fi
-          done < <(find new_versions -path "*/datapack/data/*/function/*.mcfunction" -type f -print0)
+          done < <(find new_versions -path "*/datapack/data/*/function/*.mcfunction" -type f -print0 2>/dev/null || true)
           
           if [ $macro_error -eq 0 ]; then
             if [ $files_with_macros -eq 0 ]; then
@@ -458,7 +902,7 @@ jobs:
               echo "     ✓ Translation key: $trans_key"
             fi
             
-          done < <(find new_versions -path "*/datapack/data/*/chat_type/*.json" -type f -print0 2>/dev/null)
+          done < <(find new_versions -path "*/datapack/data/*/chat_type/*.json" -type f -print0 2>/dev/null || true)
           
           while IFS= read -r -d $'\0' file; do
             if grep -q "^\s*dialog\s" "$file" 2>/dev/null; then
@@ -485,7 +929,7 @@ jobs:
                 dialog_error=1
               fi
             fi
-          done < <(find new_versions -path "*/datapack/data/*/function/*.mcfunction" -type f -print0)
+          done < <(find new_versions -path "*/datapack/data/*/function/*.mcfunction" -type f -print0 2>/dev/null || true)
           
           if [ $dialog_error -eq 0 ]; then
             if [ $chat_type_count -eq 0 ] && [ $dialog_count -eq 0 ]; then
@@ -596,7 +1040,7 @@ jobs:
                 fi
               done < "$file"
               
-            done < <(find new_versions -path "*/datapack/data/*/function/*.mcfunction" -type f -print0)
+            done < <(find new_versions -path "*/datapack/data/*/function/*.mcfunction" -type f -print0 2>/dev/null || true)
             
             if [ $book_menu_count -gt 0 ]; then
               echo "  📊 Found $book_menu_count function(s) with book menu systems"
@@ -628,7 +1072,7 @@ jobs:
                   fi
                 done
               done < "$file"
-            done < <(find new_versions -path "*/datapack/data/*/function/*.mcfunction" -type f -print0)
+            done < <(find new_versions -path "*/datapack/data/*/function/*.mcfunction" -type f -print0 2>/dev/null || true)
             
             # Check JSON files for book/phishing patterns
             while IFS= read -r -d $'\0' file; do
@@ -651,7 +1095,7 @@ jobs:
                 sec_warnings=$((sec_warnings + 1))
                 SECURITY_ISSUES=$((SECURITY_ISSUES + 1))
               fi
-            done < <(find new_versions -name "*.json" -type f -print0)
+            done < <(find new_versions -name "*.json" -type f -print0 2>/dev/null || true)
             
             # Check for obfuscated code
             echo ""
@@ -680,7 +1124,7 @@ jobs:
                 sec_warnings=$((sec_warnings + 1))
                 SECURITY_ISSUES=$((SECURITY_ISSUES + 1))
               fi
-            done < <(find new_versions -path "*/datapack/data/*/function/*.mcfunction" -type f -print0)
+            done < <(find new_versions -path "*/datapack/data/*/function/*.mcfunction" -type f -print0 2>/dev/null || true)
             
             # Summary
             if [ $SECURITY_ISSUES -eq 0 ]; then
@@ -747,7 +1191,7 @@ jobs:
                   fi
                 done
               done < "$file"
-            done < <(find new_versions -path "*/datapack/data/*/function/*.mcfunction" -type f -print0)
+            done < <(find new_versions -path "*/datapack/data/*/function/*.mcfunction" -type f -print0 2>/dev/null || true)
             
             # Check for tick functions
             echo ""
@@ -791,7 +1235,7 @@ jobs:
                   fi
                 done <<< "$tick_funcs"
               fi
-            done < <(find new_versions -path "*/datapack/data/*/tags/function/tick.json" -type f -print0 2>/dev/null)
+            done < <(find new_versions -path "*/datapack/data/*/tags/function/tick.json" -type f -print0 2>/dev/null || true)
             
             if [ $PERFORMANCE_ISSUES -eq 0 ]; then
               echo ""
@@ -863,6 +1307,7 @@ jobs:
           echo "performance_issues=$PERFORMANCE_ISSUES" >> $GITHUB_OUTPUT
           echo "total_commands=$total_commands" >> $GITHUB_OUTPUT
           echo "total_functions=$total_funcs" >> $GITHUB_OUTPUT
+          echo "files_with_macros=$files_with_macros" >> $GITHUB_OUTPUT
           
           [ $TOTAL_ERRORS -gt 0 ] && exit 1
           exit 0
@@ -876,6 +1321,7 @@ jobs:
             const warnings = ${{ steps.validation.outputs.total_warnings }};
             const security = ${{ steps.validation.outputs.security_issues }};
             const performance = ${{ steps.validation.outputs.performance_issues }};
+            const macros = ${{ steps.validation.outputs.files_with_macros }};
             
             let status = errors === 0 ? '✅ **PASSED**' : '❌ **FAILED**';
             let color = errors === 0 ? '🟢' : '🔴';
@@ -888,6 +1334,7 @@ jobs:
             ### 📊 Metrics
             - **Functions:** ${{ steps.validation.outputs.total_functions }}
             - **Commands:** ${{ steps.validation.outputs.total_commands }}
+            - **Files with Macros:** ${macros}
             - **Errors:** ${errors}
             - **Warnings:** ${warnings}
             - **Security Issues:** ${security}
@@ -896,6 +1343,7 @@ jobs:
             ${errors > 0 ? '### ❌ Action Required\nPlease fix the errors listed in the workflow logs.' : ''}
             ${security > 0 ? '### 🔒 Security Notice\nSome patterns were flagged for review. Please verify they are intentional.' : ''}
             ${performance > 0 ? '### ⚡ Performance Notice\nConsider optimizing flagged operations for better performance.' : ''}
+            ${macros > 0 ? '### 🔧 Macro Usage\nThis datapack uses macros. Ensure pack_format is 81+.' : ''}
             `;
             
             github.rest.issues.createComment({
