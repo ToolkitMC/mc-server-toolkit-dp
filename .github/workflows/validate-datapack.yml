@@ -515,29 +515,45 @@ jobs:
             sec_error=0
             sec_warnings=0
             
-            # Suspicious patterns
+            # BACKDOOR & PRIVILEGE ESCALATION PATTERNS
+            # Focus on actual security threats like unauthorized OP, command injection, external code
             declare -A suspicious_patterns
-            suspicious_patterns["op @"]="Potential admin abuse - granting OP"
-            suspicious_patterns["deop @"]="Potential admin abuse - removing OP"
-            suspicious_patterns["ban @"]="Potential abuse - banning players"
-            suspicious_patterns["kick @"]="Potential abuse - kicking players"
-            suspicious_patterns["pardon @"]="Potential abuse - pardoning players"
-            suspicious_patterns["whitelist add"]="Potential whitelist manipulation"
-            suspicious_patterns["whitelist remove"]="Potential whitelist manipulation"
-            suspicious_patterns["execute as @a"]="Mass player execution - review carefully"
-            suspicious_patterns["kill @a"]="Kills all players - dangerous"
-            suspicious_patterns["kill @e"]="Kills all entities - may cause issues"
-            suspicious_patterns["fill ~ ~ ~ ~1000"]="Massive fill operation - performance impact"
-            suspicious_patterns["clone ~ ~ ~ ~1000"]="Massive clone operation - performance impact"
             
-            # Dialog security patterns
-            suspicious_patterns["dialog open.*http"]="Dialog with external URL - phishing risk"
-            suspicious_patterns["dialog open.*https"]="Dialog with external URL - verify legitimacy"
-            suspicious_patterns["tellraw.*clickEvent.*open_url"]="Clickable URL - verify legitimacy"
-            suspicious_patterns["tellraw.*clickEvent.*run_command.*op"]="Suspicious clickEvent command"
+            # Admin privilege abuse (OP without selectors = backdoor)
+            suspicious_patterns["^[^#]*\sop\s@[ape]\s*$"]="CRITICAL: Blanket OP grant - potential backdoor"
+            suspicious_patterns["^[^#]*\sop\s@[ape]\["]="WARNING: OP grant with selector - verify legitimacy"
             
-            echo "  🔍 Scanning for suspicious patterns..."
+            # Server control abuse
+            suspicious_patterns["stop"]="CRITICAL: Server shutdown command detected"
+            suspicious_patterns["restart"]="WARNING: Server restart command detected"
             
+            # External code execution attempts (JavaScript, command injection)
+            suspicious_patterns["<script"]="CRITICAL: JavaScript injection attempt in NBT/JSON"
+            suspicious_patterns["javascript:"]="CRITICAL: JavaScript protocol in clickEvent"
+            suspicious_patterns["eval\("]="CRITICAL: JavaScript eval() detected"
+            suspicious_patterns["Function\("]="CRITICAL: JavaScript Function() constructor detected"
+            suspicious_patterns["\.js[\"']"]="WARNING: JavaScript file reference detected"
+            
+            # Command injection patterns (excluding Minecraft macros)
+            suspicious_patterns["&&"]="WARNING: Command chaining operator detected"
+            suspicious_patterns[";\s*op\s"]="CRITICAL: Command injection attempt - OP after semicolon"
+            suspicious_patterns["\|\s*op\s"]="CRITICAL: Pipe to OP command - potential exploit"
+            
+            # Unauthorized system access
+            suspicious_patterns["file://"]="CRITICAL: File protocol - potential file system access"
+            suspicious_patterns["\.\.\/"]="WARNING: Directory traversal pattern detected"
+            
+            # Phishing & malicious URLs (only without legitimate context)
+            suspicious_patterns["clickEvent.*run_command.*op"]="CRITICAL: ClickEvent grants OP - backdoor"
+            suspicious_patterns["clickEvent.*run_command.*sudo"]="CRITICAL: Sudo-like pattern in clickEvent"
+            suspicious_patterns["hoverEvent.*run_command.*op"]="CRITICAL: HoverEvent grants OP - backdoor"
+            
+            echo "  🔍 Scanning for backdoors & code injection..."
+            echo "     • OP privilege escalation"
+            echo "     • JavaScript/external code execution"
+            echo "     • Command injection patterns"
+            echo "     • Unauthorized system access"
+            echo ""
             while IFS= read -r -d $'\0' file; do
               relative_path=$(echo "$file" | sed "s|^$(pwd)/||")
               line_num=0
@@ -592,11 +608,13 @@ jobs:
             # Summary
             if [ $SECURITY_ISSUES -eq 0 ]; then
               echo ""
-              echo "  ✅ No security issues detected"
+              echo "  ✅ No backdoors or code injection detected"
+              echo "  🔒 Datapack appears safe for production use"
             else
               echo ""
-              echo "  ⚠️  Security analysis complete: $SECURITY_ISSUES issue(s) found"
-              echo "  💡 Review flagged items carefully - they may be legitimate"
+              echo "  ⚠️  Security scan complete: $SECURITY_ISSUES potential threat(s) found"
+              echo "  🚨 CRITICAL issues require immediate review"
+              echo "  💡 WARNING issues should be verified for legitimacy"
             fi
             
             TOTAL_WARNINGS=$((TOTAL_WARNINGS + sec_warnings))
@@ -615,14 +633,20 @@ jobs:
             
             echo "  🔍 Checking for performance issues..."
             
-            # Performance patterns
+            # Performance patterns - only flag inefficient usage
             declare -A perf_patterns
-            perf_patterns["execute as @e"]="Entity iteration - consider optimization"
-            perf_patterns["execute at @e"]="Entity position checks - expensive"
-            perf_patterns["@e\["]="Entity selector - limit with type/tag/distance"
-            perf_patterns["fill.*~[0-9]{3,}"]="Large fill operation detected"
-            perf_patterns["clone.*~[0-9]{3,}"]="Large clone operation detected"
-            perf_patterns["summon.*{"]="Complex entity spawn - review NBT data"
+            
+            # Entity selectors WITHOUT filtering = performance issue
+            perf_patterns["execute as @e[^[]"]="@e without selector - performance impact, add [type=] filter"
+            perf_patterns["execute at @e[^[]"]="@e without selector - expensive position check"
+            perf_patterns["@e[^[]*run"]="@e iteration without filters - add type/tag/distance"
+            
+            # Large world modifications
+            perf_patterns["fill.*~[0-9]{3,}"]="Large fill operation (100+ blocks) - performance impact"
+            perf_patterns["clone.*~[0-9]{3,}"]="Large clone operation (100+ blocks) - performance impact"
+            
+            # Complex NBT operations
+            perf_patterns["summon.*Passengers.*Passengers"]="Deeply nested entity structure - lag risk"
             
             while IFS= read -r -d $'\0' file; do
               relative_path=$(echo "$file" | sed "s|^$(pwd)/||")
