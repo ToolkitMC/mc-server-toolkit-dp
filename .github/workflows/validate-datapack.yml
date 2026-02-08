@@ -547,9 +547,9 @@ jobs:
             suspicious_patterns["hoverEvent.*run_command.*op"]="CRITICAL: HoverEvent grants OP - backdoor"
             
             # Book menu phishing detection
-            suspicious_patterns["\"written_book\""]="WARNING: Written book - verify not used for phishing"
-            suspicious_patterns["give.*written_book"]="WARNING: Giving written book - verify legitimate use"
+            suspicious_patterns["give.*written_book.*pages.*clickEvent"]="CRITICAL: Giving book with clickable content - verify legitimacy"
             suspicious_patterns["pages.*clickEvent.*open_url"]="CRITICAL: Book with URL links - phishing risk"
+            suspicious_patterns["clickEvent.*run_command.*transfer"]="WARNING: ClickEvent with /transfer - verify legitimate"
             
             echo "  🔍 Scanning for backdoors & code injection..."
             echo "     • OP privilege escalation"
@@ -583,16 +583,22 @@ jobs:
             
             # Check JSON files for book/phishing patterns
             while IFS= read -r -d $'\0' file; do
-              if grep -qE "written_book|pages.*clickEvent.*open_url" "$file" 2>/dev/null; then
-                relative_path=$(echo "$file" | sed "s|^$(pwd)/||")
-                
-                # Check if it's legitimate (e.g., in loot tables it's usually OK)
-                if [[ "$file" =~ loot_table ]]; then
-                  continue  # Skip loot tables - they're usually legitimate
-                fi
-                
+              relative_path=$(echo "$file" | sed "s|^$(pwd)/||")
+              
+              # Skip legitimate locations
+              if [[ "$relative_path" =~ loot_table ]] || [[ "$relative_path" =~ loot_tables ]]; then
+                continue  # Loot tables are legitimate
+              fi
+              
+              # Check for phishing patterns
+              if grep -qE "pages.*clickEvent.*open_url" "$file" 2>/dev/null; then
+                echo "  🚨 $relative_path"
+                echo "     Reason: CRITICAL - Book with URL clickEvents (phishing risk)"
+                sec_warnings=$((sec_warnings + 1))
+                SECURITY_ISSUES=$((SECURITY_ISSUES + 1))
+              elif grep -qE "written_book.*pages.*clickEvent" "$file" 2>/dev/null; then
                 echo "  ⚠️  $relative_path"
-                echo "     Reason: WARNING - Book system detected, verify not used for phishing"
+                echo "     Reason: WARNING - Book with clickable pages (verify legitimacy)"
                 sec_warnings=$((sec_warnings + 1))
                 SECURITY_ISSUES=$((SECURITY_ISSUES + 1))
               fi
