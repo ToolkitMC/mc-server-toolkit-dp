@@ -1,26 +1,1075 @@
-# Loot table'lar için özel kontrol
-echo "  🎁 Checking loot tables for book menus..."
-loot_book_count=0
+name: Validate Datapack (MC 1.21)
 
-while IFS= read -r -d $'\0' file; do
-  relative_path=$(echo "$file" | sed "s|^$(pwd)/||")
-  
-  if jq -e '.. | select(.function? == "minecraft:set_written_book_pages")' "$file" >/dev/null 2>&1; then
-    echo "  📖 $relative_path - Contains written book in loot"
-    loot_book_count=$((loot_book_count + 1))
+on:
+  pull_request:
+    paths:
+      - 'new_versions/**/datapack/**'
+      - '.github/workflows/validate-datapack.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'new_versions/**/datapack/**'
+      - '.github/workflows/validate-datapack.yml'
+  workflow_dispatch:
+
+env:
+  STRICT_MODE: 'false'
+  TARGET: 'release'
+  SECURITY_CHECK: 'true'
+  PERFORMANCE_CHECK: 'true'
+  # 🆕 Yeni güvenlik seviyeleri
+  BLOCK_CRITICAL_THREATS: 'true'  # Critical güvenlik sorunlarında workflow fail olsun mu?
+  ALLOW_BOOK_MENUS: 'true'  # Kitap menülerine izin ver (ama clickEvent kontrolü yap)
+  MAX_TICK_COMMANDS: '50'  # Tick function'da maksimum komut sayısı
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
     
-    # clickEvent kontrolü
-    if jq -e '.. | select(.clickEvent?.action? == "run_command")' "$file" >/dev/null 2>&1; then
-      cmd=$(jq -r '.. | select(.clickEvent?.action? == "run_command") | .clickEvent.value' "$file" 2>/dev/null)
-      
-      if [[ "$cmd" =~ op|execute|function|gamemode|give.*command_block ]]; then
-        echo "     🚨 CRITICAL: Loot table book has dangerous clickEvent"
-        echo "        Command: $cmd"
-        sec_warnings=$((sec_warnings + 1))
-        SECURITY_ISSUES=$((SECURITY_ISSUES + 1))
-      fi
-    fi
-  fi
-done < <(find new_versions -path "*/datapack/data/*/loot_table/*.json" -o -path "*/datapack/data/*/loot_tables/*.json" -type f -print0 2>/dev/null || true)
+    permissions:
+      contents: read
+      pull-requests: write
 
-echo "  📊 Found $loot_book_count loot table(s) with books"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq tree bc python3 ripgrep
+          echo "✅ Dependencies installed"
+
+      - name: Validate Datapack (All Checks)
+        id: validation
+        run: |
+          set +e
+          
+          TOTAL_ERRORS=0
+          TOTAL_WARNINGS=0
+          SECURITY_ISSUES=0
+          CRITICAL_SECURITY_ISSUES=0
+          PERFORMANCE_ISSUES=0
+          
+          VALID_FORMATS=(48 61 81 88 94)
+          INVALID_THRESHOLD=47
+          
+          mkdir -p /tmp/pack_formats
+          mkdir -p /tmp/security_reports
+          
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🚀 DATAPACK VALIDATION STARTED (Minecraft 1.21+)"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🔒 Enhanced Security Mode: ENABLED"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          
+          # ═══════════════════════════════════════════════════════════
+          # [1/9] JSON VALIDATION (Korundu)
+          # ═══════════════════════════════════════════════════════════
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🔍 [1/9] Validating JSON Files..."
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          
+          json_error=0
+          json_count=0
+          failed_files=()
+          
+          while IFS= read -r -d $'\0' file; do
+            json_count=$((json_count + 1))
+            if ! jq empty "$file" 2>/dev/null; then
+              echo "  ❌ Invalid JSON: $file"
+              failed_files+=("$file")
+              json_error=1
+            fi
+          done < <(find new_versions -path "*/datapack/**/*.json" -type f -print0 2>/dev/null || true)
+          
+          if [ $json_error -eq 0 ]; then
+            echo "  ✅ All $json_count JSON files are valid"
+          else
+            echo "  ❌ Failed: ${#failed_files[@]} file(s)"
+            TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+          fi
+          echo ""
+          
+          # ═══════════════════════════════════════════════════════════
+          # [2/9] PACK.MCMETA VALIDATION (Korundu + Geliştirildi)
+          # ═══════════════════════════════════════════════════════════
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📦 [2/9] Validating pack.mcmeta..."
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          
+          mcmeta_error=0
+          mcmeta_warnings=0
+          mcmeta_count=0
+          
+          while IFS= read -r -d $'\0' file; do
+            mcmeta_count=$((mcmeta_count + 1))
+            datapack_root=$(dirname "$file")
+            datapack_id=$(echo "$datapack_root" | md5sum | cut -d' ' -f1)
+            
+            echo "  📦 $file"
+            
+            if ! jq -e '.pack.pack_format' "$file" > /dev/null 2>&1; then
+              echo "     ❌ Missing pack.pack_format"
+              mcmeta_error=1
+              continue
+            fi
+            
+            pack_format=$(jq -r '.pack.pack_format' "$file")
+            echo "$pack_format:$datapack_root" > "/tmp/pack_formats/${datapack_id}.txt"
+            
+            is_valid=0
+            for valid_format in "${VALID_FORMATS[@]}"; do
+              if [ "$pack_format" -eq "$valid_format" ] 2>/dev/null; then
+                is_valid=1
+                break
+              fi
+            done
+            
+            if [ $is_valid -eq 1 ]; then
+              echo "     ✅ Pack format: $pack_format"
+            elif [ "$pack_format" -le "$INVALID_THRESHOLD" ] 2>/dev/null; then
+              echo "     ❌ Invalid pack_format $pack_format (must be 48, 61, 81, 88, or 94)"
+              mcmeta_error=1
+            else
+              echo "     ⚠️  Unknown pack_format: $pack_format (future version?)"
+              mcmeta_warnings=$((mcmeta_warnings + 1))
+            fi
+            
+            if ! jq -e '.pack.description' "$file" > /dev/null 2>&1; then
+              echo "     ⚠️  Missing pack.description (recommended)"
+              mcmeta_warnings=$((mcmeta_warnings + 1))
+            fi
+            
+            # 🆕 Supported_formats kontrolü
+            if jq -e '.pack.supported_formats' "$file" > /dev/null 2>&1; then
+              echo "     ℹ️  Uses supported_formats (1.20.2+)"
+            fi
+            
+          done < <(find new_versions -path "*/datapack/pack.mcmeta" -type f -print0 2>/dev/null || true)
+          
+          if [ $mcmeta_count -eq 0 ]; then
+            echo "  ❌ No pack.mcmeta files found"
+            TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+          elif [ $mcmeta_error -eq 0 ]; then
+            echo "  ✅ All pack.mcmeta files valid"
+            [ $mcmeta_warnings -gt 0 ] && echo "  ⚠️  $mcmeta_warnings warning(s)"
+          else
+            echo "  ❌ pack.mcmeta validation failed"
+            TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+          fi
+          TOTAL_WARNINGS=$((TOTAL_WARNINGS + mcmeta_warnings))
+          echo ""
+          
+          # ═══════════════════════════════════════════════════════════
+          # [3/9] STRUCTURE VALIDATION (Korundu)
+          # ═══════════════════════════════════════════════════════════
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📁 [3/9] Validating Structure..."
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          
+          struct_error=0
+          datapack_count=0
+          
+          while IFS= read -r -d $'\0' file; do
+            dir=$(dirname "$file")
+            datapack_count=$((datapack_count + 1))
+            
+            if [ ! -d "$dir/data" ]; then
+              echo "  ❌ Missing data/ in: $dir"
+              struct_error=1
+            else
+              namespace_count=$(find "$dir/data" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+              echo "  ✅ Datapack: $dir ($namespace_count namespace(s))"
+              
+              while IFS= read -r -d $'\0' namespace; do
+                ns_name=$(basename "$namespace")
+                echo "     📂 Namespace: $ns_name"
+                
+                [ -d "$namespace/function" ] && echo "        ⚙️  functions/"
+                [ -d "$namespace/advancement" ] && echo "        🏆 advancements/"
+                [ -d "$namespace/loot_table" ] && echo "        🎁 loot_tables/"
+                [ -d "$namespace/loot_tables" ] && echo "        🎁 loot_tables/ (alt)"
+                [ -d "$namespace/recipe" ] && echo "        📜 recipes/"
+                [ -d "$namespace/predicate" ] && echo "        🔍 predicates/"
+                [ -d "$namespace/tag" ] && echo "        🏷️  tags/"
+                [ -d "$namespace/structure" ] && echo "        🏗️  structures/"
+                [ -d "$namespace/worldgen" ] && echo "        🌍 worldgen/"
+                [ -d "$namespace/item_modifier" ] && echo "        ✨ item_modifiers/"
+                [ -d "$namespace/chat_type" ] && echo "        💬 chat_types/"
+                [ -d "$namespace/damage_type" ] && echo "        ⚔️  damage_types/"
+                [ -d "$namespace/enchantment" ] && echo "        ✨ enchantments/"
+                [ -d "$namespace/jukebox_song" ] && echo "        🎵 jukebox_songs/"
+                
+              done < <(find "$dir/data" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null || true)
+            fi
+          done < <(find new_versions -path "*/datapack/pack.mcmeta" -type f -print0 2>/dev/null || true)
+          
+          if [ $struct_error -eq 0 ]; then
+            echo "  ✅ Structure validation passed"
+          else
+            echo "  ❌ Structure validation failed"
+            TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+          fi
+          echo ""
+          
+          # ═══════════════════════════════════════════════════════════
+          # [4/9] FUNCTION VALIDATION (Korundu + Geliştirildi)
+          # ═══════════════════════════════════════════════════════════
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "⚙️  [4/9] Validating Functions..."
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          
+          func_error=0
+          func_warnings=0
+          total_funcs=0
+          total_commands=0
+          
+          declare -A command_min_format
+          
+          # ═══════════════════════════════════════════════════════════
+          # TEMEL KOMUTLAR (Minecraft 1.0+ / pack_format 1+)
+          # ═══════════════════════════════════════════════════════════
+          command_min_format["say"]=1
+          command_min_format["tell"]=1
+          command_min_format["msg"]=1
+          command_min_format["w"]=1
+          command_min_format["me"]=1
+          command_min_format["tellraw"]=1
+          command_min_format["execute"]=1
+          command_min_format["scoreboard"]=1
+          command_min_format["function"]=1
+          command_min_format["gamemode"]=1
+          command_min_format["give"]=1
+          command_min_format["summon"]=1
+          command_min_format["tp"]=1
+          command_min_format["teleport"]=1
+          command_min_format["title"]=1
+          command_min_format["op"]=1
+          command_min_format["deop"]=1
+          command_min_format["kill"]=1
+          command_min_format["time"]=1
+          command_min_format["weather"]=1
+          command_min_format["fill"]=1
+          command_min_format["setblock"]=1
+          command_min_format["clone"]=1
+          command_min_format["playsound"]=1
+          command_min_format["stopsound"]=1
+          command_min_format["particle"]=1
+          command_min_format["effect"]=1
+          command_min_format["enchant"]=1
+          command_min_format["xp"]=1
+          command_min_format["experience"]=1
+          command_min_format["clear"]=1
+          command_min_format["tag"]=1
+          command_min_format["team"]=1
+          command_min_format["trigger"]=1
+          command_min_format["attribute"]=1
+          command_min_format["bossbar"]=1
+          command_min_format["data"]=1
+          command_min_format["datapack"]=1
+          command_min_format["worldborder"]=1
+          command_min_format["schedule"]=1
+          command_min_format["forceload"]=1
+          command_min_format["locate"]=1
+          command_min_format["spectate"]=1
+          command_min_format["spawnpoint"]=1
+          command_min_format["setworldspawn"]=1
+          command_min_format["difficulty"]=1
+          command_min_format["gamerule"]=1
+          command_min_format["advancement"]=1
+          command_min_format["recipe"]=1
+          command_min_format["reload"]=1
+          command_min_format["seed"]=1
+          command_min_format["defaultgamemode"]=1
+          command_min_format["list"]=1
+          command_min_format["help"]=1
+          command_min_format["ban"]=1
+          command_min_format["ban-ip"]=1
+          command_min_format["banlist"]=1
+          command_min_format["pardon"]=1
+          command_min_format["pardon-ip"]=1
+          command_min_format["kick"]=1
+          command_min_format["whitelist"]=1
+          command_min_format["save-all"]=1
+          command_min_format["save-on"]=1
+          command_min_format["save-off"]=1
+          command_min_format["stop"]=1
+          command_min_format["publish"]=1
+          command_min_format["debug"]=1
+          command_min_format["perf"]=1
+          command_min_format["jfr"]=1
+          command_min_format["loot"]=1
+          command_min_format["fillbiome"]=1
+          command_min_format["place"]=1
+          command_min_format["jukebox"]=1
+          command_min_format["spreadplayers"]=1
+          command_min_format["locatebiome"]=1
+          command_min_format["replaceitem"]=1
+          
+          # ═══════════════════════════════════════════════════════════
+          # 1.20.5+ KOMUTLAR (pack_format 61+)
+          # ═══════════════════════════════════════════════════════════
+          command_min_format["item"]=61
+          command_min_format["damage"]=61
+          command_min_format["ride"]=61
+          command_min_format["return"]=61
+          command_min_format["tick"]=61
+          command_min_format["random"]=61
+          
+          # ═══════════════════════════════════════════════════════════
+          # 1.21+ KOMUTLAR (pack_format 48+)
+          # ═══════════════════════════════════════════════════════════
+          command_min_format["transfer"]=48
+          command_min_format["dialog"]=48
+          
+          # ═══════════════════════════════════════════════════════════
+          # 1.21.4+ KOMUTLAR (pack_format 61+)
+          # ═══════════════════════════════════════════════════════════
+          command_min_format["waypoint"]=61
+          
+          # ═══════════════════════════════════════════════════════════
+          # DEPRECATED COMMANDS
+          # ═══════════════════════════════════════════════════════════
+          declare -A deprecated_commands
+          deprecated_commands["replaceitem"]="Use /item replace (requires pack_format 61+)"
+          deprecated_commands["locatebiome"]="Use /locate biome (1.19+)"
+          
+          # ═══════════════════════════════════════════════════════════
+          # EXECUTE SUBCOMMANDS (Tüm subcommandlar)
+          # ═══════════════════════════════════════════════════════════
+          declare -A execute_subcommands
+          
+          # Temel subcommandlar (1.13+, pack_format 1+)
+          execute_subcommands["as "]=1
+          execute_subcommands["at "]=1
+          execute_subcommands["positioned "]=1
+          execute_subcommands["rotated "]=1
+          execute_subcommands["facing "]=1
+          execute_subcommands["align "]=1
+          execute_subcommands["anchored "]=1
+          execute_subcommands["in "]=1
+          execute_subcommands["if "]=1
+          execute_subcommands["unless "]=1
+          execute_subcommands["store "]=1
+          execute_subcommands["run "]=1
+          
+          # If/Unless conditions (1.13+)
+          execute_subcommands["if block "]=1
+          execute_subcommands["unless block "]=1
+          execute_subcommands["if blocks "]=1
+          execute_subcommands["unless blocks "]=1
+          execute_subcommands["if entity "]=1
+          execute_subcommands["unless entity "]=1
+          execute_subcommands["if score "]=1
+          execute_subcommands["unless score "]=1
+          execute_subcommands["if predicate "]=1
+          execute_subcommands["unless predicate "]=1
+          execute_subcommands["if data "]=1
+          execute_subcommands["unless data "]=1
+          execute_subcommands["if dimension "]=1
+          execute_subcommands["unless dimension "]=1
+          execute_subcommands["if function "]=1
+          execute_subcommands["unless function "]=1
+          
+          # Store subcommands (1.13+)
+          execute_subcommands["store result "]=1
+          execute_subcommands["store success "]=1
+          
+          # 1.20.5+ subcommandlar (pack_format 61+)
+          execute_subcommands["if biome "]=61
+          execute_subcommands["unless biome "]=61
+          execute_subcommands["if loaded "]=61
+          execute_subcommands["unless loaded "]=61
+          execute_subcommands["if items "]=61
+          execute_subcommands["unless items "]=61
+          
+          # 1.21+ subcommandlar (pack_format 48+)
+          execute_subcommands["on "]=48
+          execute_subcommands["summon "]=48
+          
+          # Execute on relations (1.21+)
+          execute_subcommands["on attacker"]=48
+          execute_subcommands["on controller"]=48
+          execute_subcommands["on leasher"]=48
+          execute_subcommands["on origin"]=48
+          execute_subcommands["on owner"]=48
+          execute_subcommands["on passengers"]=48
+          execute_subcommands["on target"]=48
+          execute_subcommands["on vehicle"]=48
+          
+          while IFS= read -r -d $'\0' file; do
+            total_funcs=$((total_funcs + 1))
+            
+            current_pack_format=0
+            file_dir="$file"
+            while [ "$file_dir" != "/" ] && [ "$file_dir" != "." ]; do
+              if [ -f "$file_dir/pack.mcmeta" ]; then
+                datapack_id=$(echo "$file_dir" | md5sum | cut -d' ' -f1)
+                if [ -f "/tmp/pack_formats/${datapack_id}.txt" ]; then
+                  current_pack_format=$(cut -d':' -f1 "/tmp/pack_formats/${datapack_id}.txt")
+                fi
+                break
+              fi
+              file_dir=$(dirname "$file_dir")
+            done
+            
+            relative_path=$(echo "$file" | sed "s|^$(pwd)/||")
+            file_cmd_count=0
+            line_num=0
+            
+            while IFS= read -r line; do
+              line_num=$((line_num + 1))
+              [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+              [[ "$line" =~ ^[[:space:]]*# ]] && continue
+              
+              file_cmd_count=$((file_cmd_count + 1))
+              total_commands=$((total_commands + 1))
+              
+              clean_line=$(echo "$line" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
+              [[ "$clean_line" =~ ^/ ]] && clean_line="${clean_line:1}"
+              cmd=$(echo "$clean_line" | awk '{print $1}')
+              
+              if [ -n "${deprecated_commands[$cmd]}" ]; then
+                echo "  ❌ $relative_path:$line_num - Deprecated: /$cmd"
+                echo "     💡 ${deprecated_commands[$cmd]}"
+                func_error=1
+                continue
+              fi
+              
+              if [ -n "${command_min_format[$cmd]}" ]; then
+                required_format="${command_min_format[$cmd]}"
+                if [ "$current_pack_format" -gt 0 ] && [ "$current_pack_format" -lt "$required_format" ]; then
+                  echo "  ❌ $relative_path:$line_num - /$cmd requires pack_format $required_format+"
+                  func_error=1
+                fi
+              fi
+              
+              # Execute subcommand kontrolü
+              if [[ "$clean_line" =~ ^execute ]]; then
+                for sub in "${!execute_subcommands[@]}"; do
+                  if [[ "$clean_line" =~ $sub ]]; then
+                    required="${execute_subcommands[$sub]}"
+                    if [ "$current_pack_format" -gt 0 ] && [ "$current_pack_format" -lt "$required" ]; then
+                      echo "  ❌ $relative_path:$line_num - 'execute $sub' requires pack_format $required+"
+                      func_error=1
+                    fi
+                  fi
+                done
+              fi
+              
+            done < "$file"
+            
+            [ $file_cmd_count -gt 0 ] && echo "  ✓ $relative_path ($file_cmd_count commands)"
+            
+          done < <(find new_versions -path "*/datapack/data/*/function*/*.mcfunction" -type f -print0 2>/dev/null || true)
+          
+          echo "  📊 Total: $total_funcs files, $total_commands commands"
+          
+          if [ $func_error -eq 0 ]; then
+            echo "  ✅ Function validation passed"
+            [ $func_warnings -gt 0 ] && echo "  ⚠️  $func_warnings warning(s)"
+          else
+            echo "  ❌ Function validation failed"
+            TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+          fi
+          TOTAL_WARNINGS=$((TOTAL_WARNINGS + func_warnings))
+          echo ""
+          
+          # ═══════════════════════════════════════════════════════════
+          # [5/9] MACRO VALIDATION (Geliştirilmiş)
+          # ═══════════════════════════════════════════════════════════
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🔧 [5/9] Validating Macros..."
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          
+          macro_error=0
+          files_with_macros=0
+          total_macro_vars=0
+          macro_syntax_errors=0
+          
+          while IFS= read -r -d $'\0' file; do
+            current_pack_format=0
+            file_dir="$file"
+            while [ "$file_dir" != "/" ] && [ "$file_dir" != "." ]; do
+              if [ -f "$file_dir/pack.mcmeta" ]; then
+                datapack_id=$(echo "$file_dir" | md5sum | cut -d' ' -f1)
+                if [ -f "/tmp/pack_formats/${datapack_id}.txt" ]; then
+                  current_pack_format=$(cut -d':' -f1 "/tmp/pack_formats/${datapack_id}.txt")
+                fi
+                break
+              fi
+              file_dir=$(dirname "$file_dir")
+            done
+            
+            relative_path=$(echo "$file" | sed "s|^$(pwd)/||")
+            
+            # Geçerli macro değişkenleri: $(variable_name)
+            macro_vars=$(grep -oP '\$\(\K[a-zA-Z0-9_]+(?=\))' "$file" 2>/dev/null | sort -u)
+            macro_count=$(echo "$macro_vars" | grep -c '.' 2>/dev/null || echo 0)
+            
+            # Hatalı macro pattern'leri tespit et
+            file_has_errors=0
+            line_num=0
+            
+            while IFS= read -r line; do
+              line_num=$((line_num + 1))
+              [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+              [[ "$line" =~ ^[[:space:]]*# ]] && continue
+              
+              # HATA 1: $() boş parantez
+              if [[ "$line" =~ \$\(\) ]]; then
+                echo "  ❌ $relative_path:$line_num - Empty macro: \$()"
+                echo "     Line: ${line:0:80}..."
+                macro_syntax_errors=$((macro_syntax_errors + 1))
+                file_has_errors=1
+              fi
+              
+              # HATA 2: $(space) - parantez içinde boşluk
+              if [[ "$line" =~ \$\([[:space:]] ]]; then
+                echo "  ❌ $relative_path:$line_num - Macro with leading space: \$( ...)"
+                echo "     Line: ${line:0:80}..."
+                macro_syntax_errors=$((macro_syntax_errors + 1))
+                file_has_errors=1
+              fi
+              
+              # HATA 3: $(.x) - nokta ile başlayan değişken
+              if [[ "$line" =~ \$\(\.[a-zA-Z0-9_]*\) ]]; then
+                echo "  ❌ $relative_path:$line_num - Macro starts with dot: \$(.x)"
+                echo "     Line: ${line:0:80}..."
+                macro_syntax_errors=$((macro_syntax_errors + 1))
+                file_has_errors=1
+              fi
+              
+              # UYARI: $ var ama $() yok (potansiyel yazım hatası)
+              if [[ "$line" =~ \$ ]] && ! [[ "$line" =~ \$\([a-zA-Z0-9_]+\) ]]; then
+                # execute store gibi $ içeren ama macro olmayan komutları atla
+                if ! [[ "$line" =~ (execute|store|result|success|score) ]] && ! [[ "$line" =~ ^[[:space:]]*# ]]; then
+                  echo "  ⚠️  $relative_path:$line_num - Found \$ but no valid macro syntax \$(var)"
+                  echo "     Line: ${line:0:80}..."
+                  TOTAL_WARNINGS=$((TOTAL_WARNINGS + 1))
+                fi
+              fi
+              
+            done < "$file"
+            
+            if [ $macro_count -gt 0 ]; then
+              files_with_macros=$((files_with_macros + 1))
+              total_macro_vars=$((total_macro_vars + macro_count))
+              
+              if [ $file_has_errors -eq 0 ]; then
+                echo "  🔧 $relative_path ($macro_count macro variable(s))"
+                echo "$macro_vars" | while read -r var; do
+                  [ -n "$var" ] && echo "     • \$($var)"
+                done
+              fi
+              
+              if [ "$current_pack_format" -gt 0 ] && [ "$current_pack_format" -lt 61 ]; then
+                echo "     ❌ Macros require pack_format 61+ (current: $current_pack_format)"
+                macro_error=1
+              fi
+            fi
+          done < <(find new_versions -path "*/datapack/data/*/function*/*.mcfunction" -type f -print0 2>/dev/null || true)
+          
+          if [ $macro_syntax_errors -gt 0 ]; then
+            echo ""
+            echo "  ❌ Found $macro_syntax_errors macro syntax error(s)"
+            echo "  💡 Valid macro syntax: \$(variable_name)"
+            echo "     • Variable names: [a-zA-Z0-9_]"
+            echo "     • No spaces: \$( var) ❌"
+            echo "     • No dots: \$(.var) ❌"
+            echo "     • Not empty: \$() ❌"
+            macro_error=1
+          fi
+          
+          if [ $macro_error -eq 0 ]; then
+            if [ $files_with_macros -eq 0 ]; then
+              echo "  ℹ️  No macros detected"
+            else
+              echo "  ✅ Macro validation passed"
+              echo "     📊 $files_with_macros file(s), $total_macro_vars unique variable(s)"
+            fi
+          else
+            echo "  ❌ Macro validation failed"
+            TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+          fi
+          echo ""
+          
+          # ═══════════════════════════════════════════════════════════
+          # [6/9] DIALOG VALIDATION (Korundu)
+          # ═══════════════════════════════════════════════════════════
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "💬 [6/9] Validating Dialogs..."
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          
+          echo "  ℹ️  Dialog validation skipped (optional feature)"
+          echo ""
+          
+          # ═══════════════════════════════════════════════════════════
+          # [7/9] 🆕 ADVANCED SECURITY SCAN (Yeni + Gelişmiş)
+          # ═══════════════════════════════════════════════════════════
+          if [ "$SECURITY_CHECK" = "true" ]; then
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "🔒 [7/9] ADVANCED SECURITY SCAN"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            
+            sec_warnings=0
+            
+            # 🆕 Kategorilendirilmiş güvenlik tehditleri
+            declare -A critical_threats  # Workflow'u fail etmeli
+            declare -A high_threats      # PR'da uyarı vermeli
+            declare -A medium_threats    # Gözden geçirilmeli
+            declare -A info_notices      # Bilgilendirme
+            
+            # CRITICAL - Mutlaka engellenecek
+            critical_threats["clickEvent.*run_command.*\/op[^a-z]"]="OP privilege escalation via clickEvent"
+            critical_threats["clickEvent.*run_command.*\/execute.*op"]="Execute OP via clickEvent"
+            critical_threats["clickEvent.*run_command.*\/give.*command_block"]="Command block distribution"
+            critical_threats["clickEvent.*run_command.*\/give.*structure_block"]="Structure block distribution"
+            critical_threats["clickEvent.*run_command.*\/stop"]="Server shutdown command"
+            critical_threats["clickEvent.*run_command.*\/ban"]="Ban command in clickable element"
+            critical_threats["clickEvent.*run_command.*\/deop"]="Deop command in clickable element"
+            critical_threats["<script"]="JavaScript injection in NBT"
+            critical_threats["javascript:"]="JavaScript protocol detected"
+            critical_threats["file:\/\/"]="File protocol - filesystem access attempt"
+            critical_threats["data:text\/html"]="Data URI HTML injection"
+            
+            # HIGH - Şüpheli ama meşru kullanım olabilir
+            high_threats["clickEvent.*run_command.*\/gamemode.*creative"]="Gamemode change via clickEvent"
+            high_threats["clickEvent.*run_command.*\/kick"]="Kick command in clickEvent"
+            high_threats["clickEvent.*run_command.*\/whitelist"]="Whitelist modification via clickEvent"
+            high_threats["clickEvent.*run_command.*\/function"]="Arbitrary function execution via clickEvent"
+            high_threats["clickEvent.*open_url.*bit\.ly"]="Shortened URL (phishing risk)"
+            high_threats["clickEvent.*open_url.*tinyurl"]="Shortened URL (phishing risk)"
+            high_threats["clickEvent.*open_url.*discord\.gg"]="Discord invite link"
+            
+            # MEDIUM - İncelenmeli
+            medium_threats["hoverEvent.*run_command.*op"]="OP in hoverEvent (unusual pattern)"
+            medium_threats["pages.*\\\\u200[b-f]"]="Invisible Unicode characters (obfuscation)"
+            medium_threats["pages.*\\\\u202[a-e]"]="Invisible Unicode characters (obfuscation)"
+            medium_threats["Base64.*run_command"]="Base64 encoding near commands (obfuscation?)"
+            
+            # INFO - Bilgilendirme
+            info_notices["written_book.*pages.*clickEvent"]="Book contains clickable elements"
+            
+            echo "  🔍 Scanning threat categories..."
+            echo "     🔴 CRITICAL: Will fail workflow if found"
+            echo "     🟠 HIGH: Requires review before merge"
+            echo "     🟡 MEDIUM: Should be verified"
+            echo "     🔵 INFO: Informational notice"
+            echo ""
+            
+            # ─────────────────────────────────────────────────────────
+            # 7.1: Function File Scan
+            # ─────────────────────────────────────────────────────────
+            echo "  📚 [7.1] Scanning .mcfunction files..."
+            book_menu_count=0
+            
+            while IFS= read -r -d $'\0' file; do
+              relative_path=$(echo "$file" | sed "s|^$(pwd)/||")
+              line_num=0
+              file_has_threats=0
+              file_has_books=0
+              
+              while IFS= read -r line; do
+                line_num=$((line_num + 1))
+                [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+                [[ "$line" =~ ^[[:space:]]*# ]] && continue
+                
+                # Kitap menüsü tespiti (geliştirilmiş)
+                if [[ "$line" =~ (give|item|data|loot|summon).*(written_book|minecraft:written_book) ]] && \
+                   [[ "$line" =~ (pages|Pages) ]]; then
+                  
+                  if [ $file_has_books -eq 0 ]; then
+                    if [ "$ALLOW_BOOK_MENUS" = "true" ]; then
+                      echo "     📖 $relative_path (Line $line_num) - Book menu detected"
+                    fi
+                    file_has_books=1
+                    book_menu_count=$((book_menu_count + 1))
+                  fi
+                  
+                  # CRITICAL threat taraması
+                  for pattern in "${!critical_threats[@]}"; do
+                    if [[ "$line" =~ $pattern ]]; then
+                      echo ""
+                      echo "     🔴 CRITICAL THREAT: $relative_path:$line_num"
+                      echo "        Threat: ${critical_threats[$pattern]}"
+                      echo "        Pattern: $pattern"
+                      echo "        Line: ${line:0:100}..."
+                      echo "" >> /tmp/security_reports/critical_threats.txt
+                      echo "FILE: $relative_path:$line_num" >> /tmp/security_reports/critical_threats.txt
+                      echo "THREAT: ${critical_threats[$pattern]}" >> /tmp/security_reports/critical_threats.txt
+                      sec_warnings=$((sec_warnings + 1))
+                      CRITICAL_SECURITY_ISSUES=$((CRITICAL_SECURITY_ISSUES + 1))
+                      file_has_threats=1
+                    fi
+                  done
+                  
+                  # HIGH threat taraması
+                  for pattern in "${!high_threats[@]}"; do
+                    if [[ "$line" =~ $pattern ]]; then
+                      echo ""
+                      echo "     🟠 HIGH RISK: $relative_path:$line_num"
+                      echo "        Risk: ${high_threats[$pattern]}"
+                      echo "        Pattern: $pattern"
+                      sec_warnings=$((sec_warnings + 1))
+                      SECURITY_ISSUES=$((SECURITY_ISSUES + 1))
+                      file_has_threats=1
+                    fi
+                  done
+                  
+                  # MEDIUM threat taraması
+                  for pattern in "${!medium_threats[@]}"; do
+                    if [[ "$line" =~ $pattern ]]; then
+                      echo "     🟡 Medium: $relative_path:$line_num - ${medium_threats[$pattern]}"
+                      sec_warnings=$((sec_warnings + 1))
+                      SECURITY_ISSUES=$((SECURITY_ISSUES + 1))
+                    fi
+                  done
+                fi
+              done < "$file"
+              
+            done < <(find new_versions -path "*/datapack/data/*/function*/*.mcfunction" -type f -print0 2>/dev/null || true)
+            
+            if [ $book_menu_count -eq 0 ]; then
+              echo "     ✅ No book menus in functions"
+            else
+              echo "     📊 Found $book_menu_count function(s) with books"
+            fi
+            echo ""
+            
+            # ─────────────────────────────────────────────────────────
+            # 7.2: Loot Table Scan (Yeni)
+            # ─────────────────────────────────────────────────────────
+            echo "  🎁 [7.2] Scanning loot tables..."
+            loot_book_count=0
+            
+            while IFS= read -r -d $'\0' file; do
+              relative_path=$(echo "$file" | sed "s|^$(pwd)/||")
+              
+              # written_book içeren loot table'ları bul
+              if jq -e '.. | select(.item? == "minecraft:written_book" or .id? == "minecraft:written_book")' "$file" >/dev/null 2>&1; then
+                loot_book_count=$((loot_book_count + 1))
+                
+                # JSON içeriğini string olarak al
+                book_json=$(jq -c '.. | select(.item? == "minecraft:written_book" or .id? == "minecraft:written_book")' "$file" 2>/dev/null)
+                
+                if [ -n "$book_json" ]; then
+                  echo "     📖 $relative_path - Contains written book"
+                  
+                  # CRITICAL patterns
+                  for pattern in "${!critical_threats[@]}"; do
+                    if echo "$book_json" | grep -qE "$pattern"; then
+                      echo ""
+                      echo "     🔴 CRITICAL THREAT: $relative_path"
+                      echo "        Threat: ${critical_threats[$pattern]}"
+                      echo "        Location: Loot table JSON"
+                      echo "" >> /tmp/security_reports/critical_threats.txt
+                      echo "FILE: $relative_path (loot_table)" >> /tmp/security_reports/critical_threats.txt
+                      echo "THREAT: ${critical_threats[$pattern]}" >> /tmp/security_reports/critical_threats.txt
+                      CRITICAL_SECURITY_ISSUES=$((CRITICAL_SECURITY_ISSUES + 1))
+                      sec_warnings=$((sec_warnings + 1))
+                    fi
+                  done
+                  
+                  # HIGH patterns
+                  for pattern in "${!high_threats[@]}"; do
+                    if echo "$book_json" | grep -qE "$pattern"; then
+                      echo "     🟠 HIGH RISK: $relative_path"
+                      echo "        Risk: ${high_threats[$pattern]}"
+                      SECURITY_ISSUES=$((SECURITY_ISSUES + 1))
+                      sec_warnings=$((sec_warnings + 1))
+                    fi
+                  done
+                fi
+              fi
+            done < <(find new_versions \( -path "*/datapack/data/*/loot_table*/*.json" -o -path "*/datapack/data/*/loot_tables/*.json" \) -type f -print0 2>/dev/null || true)
+            
+            if [ $loot_book_count -eq 0 ]; then
+              echo "     ✅ No books in loot tables"
+            else
+              echo "     📊 Found $loot_book_count loot table(s) with books"
+            fi
+            echo ""
+            
+            # ─────────────────────────────────────────────────────────
+            # 7.3: Obfuscation Detection (Yeni)
+            # ─────────────────────────────────────────────────────────
+            echo "  🔍 [7.3] Checking for obfuscation..."
+            obfuscated_count=0
+            
+            while IFS= read -r -d $'\0' file; do
+              relative_path=$(echo "$file" | sed "s|^$(pwd)/||")
+              
+              # Namespace kontrolü
+              if [[ "$file" =~ /data/([^/]+)/ ]]; then
+                namespace="${BASH_REMATCH[1]}"
+                # Şüpheli namespace pattern'leri
+                if [[ ${#namespace} -eq 1 ]] || [[ "$namespace" =~ ^[a-z0-9]{32,}$ ]] || [[ "$namespace" =~ ^_+ ]]; then
+                  echo "     🟡 Suspicious namespace: $namespace in $relative_path"
+                  obfuscated_count=$((obfuscated_count + 1))
+                  sec_warnings=$((sec_warnings + 1))
+                  SECURITY_ISSUES=$((SECURITY_ISSUES + 1))
+                fi
+              fi
+              
+              # Uzun dosya isimleri
+              func_name=$(basename "$file" .mcfunction)
+              if [ ${#func_name} -gt 64 ]; then
+                echo "     🟡 Suspiciously long filename (${#func_name} chars): ${func_name:0:40}..."
+                sec_warnings=$((sec_warnings + 1))
+                SECURITY_ISSUES=$((SECURITY_ISSUES + 1))
+              fi
+            done < <(find new_versions -path "*/datapack/data/*/function*/*.mcfunction" -type f -print0 2>/dev/null || true)
+            
+            if [ $obfuscated_count -eq 0 ]; then
+              echo "     ✅ No obfuscation detected"
+            else
+              echo "     ⚠️  Found $obfuscated_count potential obfuscation pattern(s)"
+            fi
+            echo ""
+            
+            # ─────────────────────────────────────────────────────────
+            # 7.4: Security Summary
+            # ─────────────────────────────────────────────────────────
+            echo "  📊 Security Scan Summary:"
+            echo "     🔴 Critical threats: $CRITICAL_SECURITY_ISSUES"
+            echo "     🟠 High risks: $((SECURITY_ISSUES - CRITICAL_SECURITY_ISSUES))"
+            echo "     🟡 Medium issues: $((sec_warnings - SECURITY_ISSUES))"
+            echo ""
+            
+            if [ $CRITICAL_SECURITY_ISSUES -gt 0 ]; then
+              echo "  🚨 CRITICAL SECURITY THREATS DETECTED!"
+              echo "  ❌ These must be fixed before merge"
+              echo ""
+              if [ -f /tmp/security_reports/critical_threats.txt ]; then
+                echo "  📋 Critical Threat Report:"
+                cat /tmp/security_reports/critical_threats.txt
+              fi
+              echo ""
+              
+              if [ "$BLOCK_CRITICAL_THREATS" = "true" ]; then
+                echo "  🛑 Workflow will FAIL due to critical threats"
+                TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
+              fi
+            elif [ $SECURITY_ISSUES -eq 0 ]; then
+              echo "  ✅ No security threats detected"
+              echo "  🔒 Datapack appears safe for production"
+            else
+              echo "  ⚠️  Security issues require review"
+              echo "  💡 Verify all flagged patterns are intentional"
+            fi
+            
+            TOTAL_WARNINGS=$((TOTAL_WARNINGS + sec_warnings))
+            echo ""
+          fi
+          
+          # ═══════════════════════════════════════════════════════════
+          # [8/9] PERFORMANCE CHECK (Korundu + Geliştirildi)
+          # ═══════════════════════════════════════════════════════════
+          if [ "$PERFORMANCE_CHECK" = "true" ]; then
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "⚡ [8/9] Performance Analysis..."
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            
+            perf_warnings=0
+            
+            echo "  🔍 Checking tick functions..."
+            tick_count=0
+            
+            while IFS= read -r -d $'\0' file; do
+              if jq -e '.values[]' "$file" 2>/dev/null | grep -q "tick"; then
+                tick_count=$((tick_count + 1))
+                relative_path=$(echo "$file" | sed "s|^$(pwd)/||")
+                echo "  📌 Tick function tag: $relative_path"
+                
+                tick_funcs=$(jq -r '.values[]' "$file" 2>/dev/null)
+                while IFS= read -r func_path; do
+                  func_file=$(find new_versions -path "*/function*/${func_path#*:}.mcfunction" -type f 2>/dev/null | head -1)
+                  if [ -n "$func_file" ]; then
+                    cmd_count=$(grep -cEv '^[[:space:]]*$|^[[:space:]]*#' "$func_file" 2>/dev/null || echo 0)
+                    
+                    # 🆕 Tick'te yasaklı komutlar (geliştirilmiş)
+                    banned_in_tick=(deop op say tell msg w me title tellraw)
+                    has_banned=0
+                    
+                    for banned_cmd in "${banned_in_tick[@]}"; do
+                      if grep -qE "^\s*$banned_cmd\s" "$func_file" 2>/dev/null; then
+                        if [ $has_banned -eq 0 ]; then
+                          echo "     🔴 CRITICAL: Banned commands in tick: $func_path"
+                          echo "        These run 20x/second (400 times in 20s):"
+                          has_banned=1
+                        fi
+                        banned_lines=$(grep -E "^\s*$banned_cmd\s" "$func_file" | head -2)
+                        echo "        • /$banned_cmd: ${banned_lines:0:50}..."
+                        perf_warnings=$((perf_warnings + 1))
+                        PERFORMANCE_ISSUES=$((PERFORMANCE_ISSUES + 1))
+                      fi
+                    done
+                    
+                    # Komut sayısı kontrolü (env'den al)
+                    max_cmds=${MAX_TICK_COMMANDS:-50}
+                    if [ "$cmd_count" -gt "$max_cmds" ]; then
+                      echo "     ⚠️  Large tick: $func_path ($cmd_count > $max_cmds cmds)"
+                      perf_warnings=$((perf_warnings + 1))
+                      PERFORMANCE_ISSUES=$((PERFORMANCE_ISSUES + 1))
+                    elif [ $has_banned -eq 0 ]; then
+                      echo "     ✓ $func_path ($cmd_count cmds)"
+                    fi
+                  fi
+                done <<< "$tick_funcs"
+              fi
+            done < <(find new_versions -path "*/datapack/data/*/tags/function*/tick.json" -type f -print0 2>/dev/null || true)
+            
+            if [ $PERFORMANCE_ISSUES -eq 0 ]; then
+              echo ""
+              echo "  ✅ No performance issues detected"
+            else
+              echo ""
+              echo "  ⚠️  Performance: $PERFORMANCE_ISSUES issue(s)"
+            fi
+            
+            TOTAL_WARNINGS=$((TOTAL_WARNINGS + perf_warnings))
+            echo ""
+          fi
+          
+          # ═══════════════════════════════════════════════════════════
+          # [9/9] FINAL VALIDATION SUMMARY
+          # ═══════════════════════════════════════════════════════════
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📋 VALIDATION SUMMARY"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          echo "  📦 Datapacks:           $datapack_count"
+          echo "  📄 JSON files:          $json_count"
+          echo "  ⚙️  Functions:           $total_funcs"
+          echo "  💬 Commands:            $total_commands"
+          echo "  🔧 With macros:         $files_with_macros"
+          echo ""
+          
+          if [ "$SECURITY_CHECK" = "true" ]; then
+            echo "  🔒 Security Analysis:"
+            echo "     🔴 Critical:        $CRITICAL_SECURITY_ISSUES"
+            echo "     🟠 High:            $((SECURITY_ISSUES - CRITICAL_SECURITY_ISSUES))"
+            echo "     🟡 Total issues:    $SECURITY_ISSUES"
+          fi
+          
+          if [ "$PERFORMANCE_CHECK" = "true" ]; then
+            echo "  ⚡ Performance:        $PERFORMANCE_ISSUES issue(s)"
+          fi
+          echo ""
+          
+          if [ $TOTAL_ERRORS -eq 0 ] && [ $CRITICAL_SECURITY_ISSUES -eq 0 ]; then
+            echo "  ✅ ALL VALIDATIONS PASSED"
+            [ $TOTAL_WARNINGS -gt 0 ] && echo "  ⚠️  $TOTAL_WARNINGS warning(s) - review recommended"
+            [ $SECURITY_ISSUES -gt 0 ] && echo "  🔒 $SECURITY_ISSUES security notice(s) - verify legitimacy"
+            [ $PERFORMANCE_ISSUES -gt 0 ] && echo "  ⚡ $PERFORMANCE_ISSUES performance notice(s) - consider optimization"
+            echo ""
+            echo "  🚀 Datapack is ready for Minecraft 1.21+"
+          else
+            echo "  ❌ VALIDATION FAILED"
+            echo "  ❌ Errors: $TOTAL_ERRORS"
+            echo "  ⚠️  Warnings: $TOTAL_WARNINGS"
+            [ $CRITICAL_SECURITY_ISSUES -gt 0 ] && echo "  🔴 CRITICAL Security: $CRITICAL_SECURITY_ISSUES"
+            [ $SECURITY_ISSUES -gt 0 ] && echo "  🔒 Security: $SECURITY_ISSUES"
+            [ $PERFORMANCE_ISSUES -gt 0 ] && echo "  ⚡ Performance: $PERFORMANCE_ISSUES"
+            echo ""
+            echo "  🚨 BLOCKING ISSUES:"
+            [ $CRITICAL_SECURITY_ISSUES -gt 0 ] && echo "     • Critical security threats detected"
+            [ $TOTAL_ERRORS -gt 0 ] && echo "     • Validation errors found"
+            echo ""
+            echo "  💡 Common fixes:"
+            echo "     • Remove backdoor commands (/op, /deop in clickEvents)"
+            echo "     • Remove banned commands from tick functions"
+            echo "     • Fix pack_format mismatches"
+            echo "     • Update deprecated commands"
+          fi
+          
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          
+          echo "total_errors=$TOTAL_ERRORS" >> $GITHUB_OUTPUT
+          echo "total_warnings=$TOTAL_WARNINGS" >> $GITHUB_OUTPUT
+          echo "security_issues=$SECURITY_ISSUES" >> $GITHUB_OUTPUT
+          echo "critical_security_issues=$CRITICAL_SECURITY_ISSUES" >> $GITHUB_OUTPUT
+          echo "performance_issues=$PERFORMANCE_ISSUES" >> $GITHUB_OUTPUT
+          echo "total_commands=$total_commands" >> $GITHUB_OUTPUT
+          echo "total_functions=$total_funcs" >> $GITHUB_OUTPUT
+          echo "files_with_macros=$files_with_macros" >> $GITHUB_OUTPUT
+          
+          # Fail workflow if critical issues
+          [ $TOTAL_ERRORS -gt 0 ] && exit 1
+          [ "$BLOCK_CRITICAL_THREATS" = "true" ] && [ $CRITICAL_SECURITY_ISSUES -gt 0 ] && exit 1
+          exit 0
+
+      - name: Comment PR with Results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const errors = ${{ steps.validation.outputs.total_errors }};
+            const warnings = ${{ steps.validation.outputs.total_warnings }};
+            const security = ${{ steps.validation.outputs.security_issues }};
+            const criticalSec = ${{ steps.validation.outputs.critical_security_issues }};
+            const performance = ${{ steps.validation.outputs.performance_issues }};
+            const macros = ${{ steps.validation.outputs.files_with_macros }};
+            
+            let status = (errors === 0 && criticalSec === 0) ? '✅ **PASSED**' : '❌ **FAILED**';
+            let color = (errors === 0 && criticalSec === 0) ? '🟢' : '🔴';
+            
+            let securitySection = '';
+            if (criticalSec > 0) {
+              securitySection = `
+            ### 🚨 CRITICAL SECURITY THREATS
+            **${criticalSec} critical backdoor(s) detected!**
+            
+            This PR contains potentially malicious code:
+            - ❌ OP privilege escalation attempts
+            - ❌ Command injection via clickEvents
+            - ❌ Server control exploits
+            
+            **This PR cannot be merged until these are resolved.**
+            `;
+            } else if (security > 0) {
+              securitySection = `
+            ### 🔒 Security Notice
+            ${security} security pattern(s) flagged for review.
+            Please verify these are intentional and legitimate.
+            `;
+            }
+            
+            const body = `
+            ## ${color} Datapack Validation Results
+            
+            **Status:** ${status}
+            
+            ### 📊 Metrics
+            | Metric | Value |
+            |--------|-------|
+            | Functions | ${{ steps.validation.outputs.total_functions }} |
+            | Commands | ${{ steps.validation.outputs.total_commands }} |
+            | Macros | ${macros} files |
+            | Errors | ${errors} |
+            | Warnings | ${warnings} |
+            | 🔴 Critical Security | ${criticalSec} |
+            | 🔒 Security Issues | ${security} |
+            | ⚡ Performance | ${performance} |
+            
+            ${securitySection}
+            
+            ${errors > 0 ? '### ❌ Validation Errors\nFix errors in workflow logs before merge.' : ''}
+            ${performance > 0 ? '### ⚡ Performance\nConsider optimizing flagged operations.' : ''}
+            
+            ---
+            <sub>Enhanced Security Mode | Minecraft 1.21+</sub>
+            `;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
