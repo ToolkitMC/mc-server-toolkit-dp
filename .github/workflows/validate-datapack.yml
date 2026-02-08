@@ -1,4 +1,4 @@
-name: Validate Datapack
+name: Validate Datapack (Enhanced)
 
 on:
   pull_request:
@@ -16,6 +16,8 @@ on:
 env:
   STRICT_MODE: false  # true = unknown commands fail, false = warnings only
   TARGET: release     # release | snapshot
+  SECURITY_CHECK: true  # Enable security scanning
+  PERFORMANCE_CHECK: true  # Enable performance analysis
 
 jobs:
   validate:
@@ -30,25 +32,26 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y jq tree
+          sudo apt-get install -y jq tree bc
           echo "✅ Dependencies installed"
 
-      # ═══════════════════════════════════════════════════════════
-      # COMBINED VALIDATION - All checks in one step for better UI
-      # ═══════════════════════════════════════════════════════════
       - name: Validate Datapack (All Checks)
+        id: validation
         run: |
-          set -e  # Exit on first error
+          set -e
           
           TOTAL_ERRORS=0
           TOTAL_WARNINGS=0
+          SECURITY_ISSUES=0
+          PERFORMANCE_ISSUES=0
           
           # Valid pack formats for Minecraft 1.21+
-          VALID_FORMATS=(48 81 88 94)  # 48=1.21, 81=1.21.2, 88=1.21.4, 94=1.21.5
+          VALID_FORMATS=(48 81 88 94)
           INVALID_THRESHOLD=47
           
-          # Create cache directory
+          # Create directories
           mkdir -p /tmp/pack_formats
+          mkdir -p /tmp/reports
           
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "🚀 DATAPACK VALIDATION STARTED (Minecraft 1.21+)"
@@ -59,7 +62,7 @@ jobs:
           # 1. JSON SYNTAX VALIDATION
           # ═══════════════════════════════════════════════════
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "🔍 [1/6] Validating JSON Files..."
+          echo "🔍 [1/8] Validating JSON Files..."
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           
           json_error=0
@@ -87,7 +90,7 @@ jobs:
           # 2. PACK.MCMETA VALIDATION
           # ═══════════════════════════════════════════════════
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "📦 [2/6] Validating pack.mcmeta..."
+          echo "📦 [2/8] Validating pack.mcmeta..."
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           
           mcmeta_error=0
@@ -128,7 +131,6 @@ jobs:
               mcmeta_warnings=$((mcmeta_warnings + 1))
             fi
             
-            # Check description
             if ! jq -e '.pack.description' "$file" > /dev/null 2>&1; then
               echo "     ⚠️  Missing pack.description (recommended)"
               mcmeta_warnings=$((mcmeta_warnings + 1))
@@ -153,7 +155,7 @@ jobs:
           # 3. DATAPACK STRUCTURE
           # ═══════════════════════════════════════════════════
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "📁 [3/6] Validating Structure..."
+          echo "📁 [3/8] Validating Structure..."
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           
           struct_error=0
@@ -170,7 +172,6 @@ jobs:
               namespace_count=$(find "$dir/data" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
               echo "  ✅ Datapack: $dir ($namespace_count namespace(s))"
               
-              # Check for common folders
               while IFS= read -r -d $'\0' namespace; do
                 ns_name=$(basename "$namespace")
                 echo "     📂 Namespace: $ns_name"
@@ -202,10 +203,10 @@ jobs:
           echo ""
           
           # ═══════════════════════════════════════════════════
-          # 4. FUNCTION FILES VALIDATION (ENHANCED FOR 1.21)
+          # 4. FUNCTION FILES VALIDATION
           # ═══════════════════════════════════════════════════
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "⚙️  [4/6] Validating Functions..."
+          echo "⚙️  [4/8] Validating Functions..."
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           
           func_error=0
@@ -213,9 +214,8 @@ jobs:
           total_funcs=0
           total_commands=0
           
-          # Enhanced command compatibility matrix for 1.21+
+          # Command compatibility matrix
           declare -A command_min_format
-          # Core commands (all versions)
           command_min_format["say"]=1
           command_min_format["tellraw"]=1
           command_min_format["execute"]=1
@@ -255,22 +255,17 @@ jobs:
           command_min_format["spectate"]=1
           command_min_format["spawnpoint"]=1
           command_min_format["setworldspawn"]=1
-          
-          # 1.21.2+ commands (pack_format 81+)
           command_min_format["item"]=81
           command_min_format["damage"]=81
           command_min_format["ride"]=81
           command_min_format["return"]=81
           command_min_format["tick"]=81
           command_min_format["random"]=81
-          
-          # 1.21 new/updated commands (pack_format 48+)
-          command_min_format["transfer"]=48  # New in 1.21
+          command_min_format["transfer"]=48
           
           declare -A deprecated_commands
           deprecated_commands["replaceitem"]="Use /item replace (requires pack_format 81+)"
           
-          # New 1.21 execute subcommands
           declare -A execute_subcommands
           execute_subcommands["if biome"]=81
           execute_subcommands["unless biome"]=81
@@ -278,12 +273,11 @@ jobs:
           execute_subcommands["unless loaded"]=48
           execute_subcommands["if dimension"]=1
           execute_subcommands["unless dimension"]=1
-          execute_subcommands["on"]=48  # execute on <relation>
+          execute_subcommands["on"]=48
           
           while IFS= read -r -d $'\0' file; do
             total_funcs=$((total_funcs + 1))
             
-            # Find pack format
             current_pack_format=0
             file_dir="$file"
             while [ "$file_dir" != "/" ] && [ "$file_dir" != "." ]; do
@@ -313,7 +307,6 @@ jobs:
               [[ "$clean_line" =~ ^/ ]] && clean_line="${clean_line:1}"
               cmd=$(echo "$clean_line" | awk '{print $1}')
               
-              # Check deprecated
               if [ -n "${deprecated_commands[$cmd]}" ]; then
                 echo "  ❌ $relative_path:$line_num - Deprecated: /$cmd"
                 echo "     💡 ${deprecated_commands[$cmd]}"
@@ -321,7 +314,6 @@ jobs:
                 continue
               fi
               
-              # Check compatibility
               if [ -n "${command_min_format[$cmd]}" ]; then
                 required_format="${command_min_format[$cmd]}"
                 if [ "$current_pack_format" -gt 0 ] && [ "$current_pack_format" -lt "$required_format" ]; then
@@ -333,7 +325,6 @@ jobs:
                 func_warnings=$((func_warnings + 1))
               fi
               
-              # Execute subcommand checks
               if [[ "$clean_line" =~ ^execute ]]; then
                 for sub in "${!execute_subcommands[@]}"; do
                   if [[ "$clean_line" =~ $sub ]]; then
@@ -345,7 +336,6 @@ jobs:
                   fi
                 done
                 
-                # Check for execute on <relation>
                 if [[ "$clean_line" =~ execute[[:space:]]+on[[:space:]]+(attacker|controller|leasher|origin|owner|passengers|target|vehicle) ]]; then
                   if [ "$current_pack_format" -gt 0 ] && [ "$current_pack_format" -lt 48 ]; then
                     echo "  ❌ $relative_path:$line_num - 'execute on <relation>' requires pack_format 48+"
@@ -354,7 +344,6 @@ jobs:
                 fi
               fi
               
-              # Check for transfer command (new in 1.21)
               if [[ "$cmd" == "transfer" ]]; then
                 if [ "$current_pack_format" -gt 0 ] && [ "$current_pack_format" -lt 48 ]; then
                   echo "  ❌ $relative_path:$line_num - /transfer requires pack_format 48+ (Minecraft 1.21)"
@@ -384,7 +373,7 @@ jobs:
           # 5. MACRO VALIDATION
           # ═══════════════════════════════════════════════════
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "🔧 [5/6] Validating Macros..."
+          echo "🔧 [5/8] Validating Macros..."
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           
           macro_error=0
@@ -438,10 +427,10 @@ jobs:
           echo ""
           
           # ═══════════════════════════════════════════════════
-          # 6. DIALOG & CHAT TYPE VALIDATION (NEW IN 1.21)
+          # 6. DIALOG & CHAT TYPE VALIDATION
           # ═══════════════════════════════════════════════════
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "💬 [6/6] Validating Dialogs & Chat Types..."
+          echo "💬 [6/8] Validating Dialogs & Chat Types..."
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           
           dialog_error=0
@@ -449,14 +438,12 @@ jobs:
           dialog_count=0
           chat_type_count=0
           
-          # Validate chat_type JSON files
           while IFS= read -r -d $'\0' file; do
             chat_type_count=$((chat_type_count + 1))
             relative_path=$(echo "$file" | sed "s|^$(pwd)/||")
             
             echo "  💬 $relative_path"
             
-            # Check required fields for chat_type
             if ! jq -e '.chat' "$file" > /dev/null 2>&1; then
               echo "     ❌ Missing 'chat' field"
               dialog_error=1
@@ -467,7 +454,6 @@ jobs:
               dialog_warnings=$((dialog_warnings + 1))
             fi
             
-            # Validate translation keys
             if jq -e '.chat.translation_key' "$file" > /dev/null 2>&1; then
               trans_key=$(jq -r '.chat.translation_key' "$file")
               echo "     ✓ Translation key: $trans_key"
@@ -475,13 +461,11 @@ jobs:
             
           done < <(find new_versions -path "*/datapack/data/*/chat_type/*.json" -type f -print0 2>/dev/null)
           
-          # Check for dialog command usage in functions
           while IFS= read -r -d $'\0' file; do
             if grep -q "^\s*dialog\s" "$file" 2>/dev/null; then
               dialog_count=$((dialog_count + 1))
               relative_path=$(echo "$file" | sed "s|^$(pwd)/||")
               
-              # Find pack format
               current_pack_format=0
               file_dir="$file"
               while [ "$file_dir" != "/" ] && [ "$file_dir" != "." ]; do
@@ -497,7 +481,6 @@ jobs:
               
               echo "  🗨️  $relative_path uses /dialog command"
               
-              # Dialog command requires 1.21+ (pack_format 48+)
               if [ "$current_pack_format" -gt 0 ] && [ "$current_pack_format" -lt 48 ]; then
                 echo "     ❌ /dialog requires pack_format 48+ (Minecraft 1.21)"
                 dialog_error=1
@@ -522,30 +505,229 @@ jobs:
           echo ""
           
           # ═══════════════════════════════════════════════════
+          # 7. SECURITY ANALYSIS (NEW!)
+          # ═══════════════════════════════════════════════════
+          if [ "$SECURITY_CHECK" = "true" ]; then
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "🔒 [7/8] Security Analysis..."
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            
+            sec_error=0
+            sec_warnings=0
+            
+            # Suspicious patterns
+            declare -A suspicious_patterns
+            suspicious_patterns["op @"]="Potential admin abuse - granting OP"
+            suspicious_patterns["deop @"]="Potential admin abuse - removing OP"
+            suspicious_patterns["ban @"]="Potential abuse - banning players"
+            suspicious_patterns["kick @"]="Potential abuse - kicking players"
+            suspicious_patterns["pardon @"]="Potential abuse - pardoning players"
+            suspicious_patterns["whitelist add"]="Potential whitelist manipulation"
+            suspicious_patterns["whitelist remove"]="Potential whitelist manipulation"
+            suspicious_patterns["execute as @a"]="Mass player execution - review carefully"
+            suspicious_patterns["kill @a"]="Kills all players - dangerous"
+            suspicious_patterns["kill @e"]="Kills all entities - may cause issues"
+            suspicious_patterns["fill ~ ~ ~ ~1000"]="Massive fill operation - performance impact"
+            suspicious_patterns["clone ~ ~ ~ ~1000"]="Massive clone operation - performance impact"
+            
+            # Dialog security patterns
+            suspicious_patterns["dialog open.*http"]="Dialog with external URL - phishing risk"
+            suspicious_patterns["dialog open.*https"]="Dialog with external URL - verify legitimacy"
+            suspicious_patterns["tellraw.*clickEvent.*open_url"]="Clickable URL - verify legitimacy"
+            suspicious_patterns["tellraw.*clickEvent.*run_command.*op"]="Suspicious clickEvent command"
+            
+            echo "  🔍 Scanning for suspicious patterns..."
+            
+            while IFS= read -r -d $'\0' file; do
+              relative_path=$(echo "$file" | sed "s|^$(pwd)/||")
+              line_num=0
+              
+              while IFS= read -r line; do
+                line_num=$((line_num + 1))
+                [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+                [[ "$line" =~ ^[[:space:]]*# ]] && continue
+                
+                for pattern in "${!suspicious_patterns[@]}"; do
+                  if [[ "$line" =~ $pattern ]]; then
+                    echo "  ⚠️  $relative_path:$line_num"
+                    echo "     Pattern: '$pattern'"
+                    echo "     Reason: ${suspicious_patterns[$pattern]}"
+                    echo "     Line: ${line:0:80}..."
+                    sec_warnings=$((sec_warnings + 1))
+                    SECURITY_ISSUES=$((SECURITY_ISSUES + 1))
+                  fi
+                done
+              done < "$file"
+            done < <(find new_versions -path "*/datapack/data/*/function/*.mcfunction" -type f -print0)
+            
+            # Check for obfuscated code
+            echo ""
+            echo "  🔍 Checking for obfuscated code..."
+            obfuscated_count=0
+            
+            while IFS= read -r -d $'\0' file; do
+              relative_path=$(echo "$file" | sed "s|^$(pwd)/||")
+              
+              # Check for suspicious namespace names
+              if [[ "$file" =~ /data/([^/]+)/ ]]; then
+                namespace="${BASH_REMATCH[1]}"
+                # Single char namespaces or random strings
+                if [[ ${#namespace} -eq 1 ]] || [[ "$namespace" =~ ^[a-z0-9]{32,}$ ]]; then
+                  echo "  ⚠️  Suspicious namespace: $namespace in $relative_path"
+                  obfuscated_count=$((obfuscated_count + 1))
+                  sec_warnings=$((sec_warnings + 1))
+                  SECURITY_ISSUES=$((SECURITY_ISSUES + 1))
+                fi
+              fi
+              
+              # Check for overly long function names (possible obfuscation)
+              func_name=$(basename "$file" .mcfunction)
+              if [ ${#func_name} -gt 50 ]; then
+                echo "  ⚠️  Suspiciously long function name: $func_name"
+                sec_warnings=$((sec_warnings + 1))
+                SECURITY_ISSUES=$((SECURITY_ISSUES + 1))
+              fi
+            done < <(find new_versions -path "*/datapack/data/*/function/*.mcfunction" -type f -print0)
+            
+            # Summary
+            if [ $SECURITY_ISSUES -eq 0 ]; then
+              echo ""
+              echo "  ✅ No security issues detected"
+            else
+              echo ""
+              echo "  ⚠️  Security analysis complete: $SECURITY_ISSUES issue(s) found"
+              echo "  💡 Review flagged items carefully - they may be legitimate"
+            fi
+            
+            TOTAL_WARNINGS=$((TOTAL_WARNINGS + sec_warnings))
+            echo ""
+          fi
+          
+          # ═══════════════════════════════════════════════════
+          # 8. PERFORMANCE ANALYSIS (NEW!)
+          # ═══════════════════════════════════════════════════
+          if [ "$PERFORMANCE_CHECK" = "true" ]; then
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "⚡ [8/8] Performance Analysis..."
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            
+            perf_warnings=0
+            
+            echo "  🔍 Checking for performance issues..."
+            
+            # Performance patterns
+            declare -A perf_patterns
+            perf_patterns["execute as @e"]="Entity iteration - consider optimization"
+            perf_patterns["execute at @e"]="Entity position checks - expensive"
+            perf_patterns["@e\["]="Entity selector - limit with type/tag/distance"
+            perf_patterns["fill.*~[0-9]{3,}"]="Large fill operation detected"
+            perf_patterns["clone.*~[0-9]{3,}"]="Large clone operation detected"
+            perf_patterns["summon.*{"]="Complex entity spawn - review NBT data"
+            
+            while IFS= read -r -d $'\0' file; do
+              relative_path=$(echo "$file" | sed "s|^$(pwd)/||")
+              line_num=0
+              file_perf_issues=0
+              
+              while IFS= read -r line; do
+                line_num=$((line_num + 1))
+                [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+                [[ "$line" =~ ^[[:space:]]*# ]] && continue
+                
+                for pattern in "${!perf_patterns[@]}"; do
+                  if [[ "$line" =~ $pattern ]]; then
+                    if [ $file_perf_issues -eq 0 ]; then
+                      echo "  ⚠️  $relative_path"
+                    fi
+                    echo "     Line $line_num: ${perf_patterns[$pattern]}"
+                    file_perf_issues=$((file_perf_issues + 1))
+                    perf_warnings=$((perf_warnings + 1))
+                    PERFORMANCE_ISSUES=$((PERFORMANCE_ISSUES + 1))
+                  fi
+                done
+              done < "$file"
+            done < <(find new_versions -path "*/datapack/data/*/function/*.mcfunction" -type f -print0)
+            
+            # Check for tick functions
+            echo ""
+            echo "  🔍 Analyzing tick functions..."
+            tick_count=0
+            
+            while IFS= read -r -d $'\0' file; do
+              if jq -e '.values[]' "$file" 2>/dev/null | grep -q "tick"; then
+                tick_count=$((tick_count + 1))
+                relative_path=$(echo "$file" | sed "s|^$(pwd)/||")
+                echo "  📌 Tick function tag: $relative_path"
+                
+                # Count commands in tick functions
+                tick_funcs=$(jq -r '.values[]' "$file" 2>/dev/null)
+                while IFS= read -r func_path; do
+                  func_file=$(find new_versions -path "*/function/${func_path#*:}.mcfunction" -type f 2>/dev/null | head -1)
+                  if [ -n "$func_file" ]; then
+                    cmd_count=$(grep -cEv '^[[:space:]]*$|^[[:space:]]*#' "$func_file" 2>/dev/null || echo 0)
+                    if [ "$cmd_count" -gt 50 ]; then
+                      echo "     ⚠️  Large tick function: $func_path ($cmd_count commands)"
+                      perf_warnings=$((perf_warnings + 1))
+                      PERFORMANCE_ISSUES=$((PERFORMANCE_ISSUES + 1))
+                    else
+                      echo "     ✓ $func_path ($cmd_count commands)"
+                    fi
+                  fi
+                done <<< "$tick_funcs"
+              fi
+            done < <(find new_versions -path "*/datapack/data/*/tags/function/tick.json" -type f -print0 2>/dev/null)
+            
+            if [ $PERFORMANCE_ISSUES -eq 0 ]; then
+              echo ""
+              echo "  ✅ No performance issues detected"
+            else
+              echo ""
+              echo "  ⚠️  Performance analysis: $PERFORMANCE_ISSUES potential issue(s)"
+              echo "  💡 Consider optimizing flagged operations"
+            fi
+            
+            TOTAL_WARNINGS=$((TOTAL_WARNINGS + perf_warnings))
+            echo ""
+          fi
+          
+          # ═══════════════════════════════════════════════════
           # FINAL SUMMARY
           # ═══════════════════════════════════════════════════
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "📋 VALIDATION SUMMARY"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo ""
-          echo "  📦 Datapacks:      $datapack_count"
-          echo "  📄 JSON files:     $json_count"
-          echo "  ⚙️  Functions:      $total_funcs"
-          echo "  💬 Commands:       $total_commands"
-          echo "  🔧 With macros:    $files_with_macros"
-          echo "  💬 Chat types:     $chat_type_count"
-          echo "  🗨️  Dialog usage:   $dialog_count"
+          echo "  📦 Datapacks:           $datapack_count"
+          echo "  📄 JSON files:          $json_count"
+          echo "  ⚙️  Functions:           $total_funcs"
+          echo "  💬 Commands:            $total_commands"
+          echo "  🔧 With macros:         $files_with_macros"
+          echo "  💬 Chat types:          $chat_type_count"
+          echo "  🗨️  Dialog usage:        $dialog_count"
+          echo ""
+          
+          if [ "$SECURITY_CHECK" = "true" ]; then
+            echo "  🔒 Security issues:     $SECURITY_ISSUES"
+          fi
+          
+          if [ "$PERFORMANCE_CHECK" = "true" ]; then
+            echo "  ⚡ Performance issues:  $PERFORMANCE_ISSUES"
+          fi
           echo ""
           
           if [ $TOTAL_ERRORS -eq 0 ]; then
             echo "  ✅ ALL VALIDATIONS PASSED"
             [ $TOTAL_WARNINGS -gt 0 ] && echo "  ⚠️  $TOTAL_WARNINGS warning(s) detected"
+            [ $SECURITY_ISSUES -gt 0 ] && echo "  🔒 $SECURITY_ISSUES security notice(s) - review recommended"
+            [ $PERFORMANCE_ISSUES -gt 0 ] && echo "  ⚡ $PERFORMANCE_ISSUES performance notice(s) - optimization recommended"
             echo ""
             echo "  🚀 Datapack is production-ready for Minecraft 1.21+"
           else
             echo "  ❌ VALIDATION FAILED"
             echo "  ❌ Errors: $TOTAL_ERRORS"
             echo "  ⚠️  Warnings: $TOTAL_WARNINGS"
+            [ $SECURITY_ISSUES -gt 0 ] && echo "  🔒 Security issues: $SECURITY_ISSUES"
+            [ $PERFORMANCE_ISSUES -gt 0 ] && echo "  ⚡ Performance issues: $PERFORMANCE_ISSUES"
             echo ""
             echo "  Common issues:"
             echo "    • pack_format must be 48, 81, 88, or 94"
@@ -557,16 +739,51 @@ jobs:
           
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           
-          # Exit with error if any validation failed
+          # Export metrics for badge generation
+          echo "total_errors=$TOTAL_ERRORS" >> $GITHUB_OUTPUT
+          echo "total_warnings=$TOTAL_WARNINGS" >> $GITHUB_OUTPUT
+          echo "security_issues=$SECURITY_ISSUES" >> $GITHUB_OUTPUT
+          echo "performance_issues=$PERFORMANCE_ISSUES" >> $GITHUB_OUTPUT
+          echo "total_commands=$total_commands" >> $GITHUB_OUTPUT
+          echo "total_functions=$total_funcs" >> $GITHUB_OUTPUT
+          
           [ $TOTAL_ERRORS -gt 0 ] && exit 1
           exit 0
 
-      - name: Upload Validation Logs
-        if: failure()
-        uses: actions/upload-artifact@v4
+      - name: Comment PR with Results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
         with:
-          name: validation-logs
-          path: |
-            new_versions/**/datapack/**/*.json
-            new_versions/**/datapack/**/*.mcfunction
-          retention-days: 7
+          script: |
+            const errors = ${{ steps.validation.outputs.total_errors }};
+            const warnings = ${{ steps.validation.outputs.total_warnings }};
+            const security = ${{ steps.validation.outputs.security_issues }};
+            const performance = ${{ steps.validation.outputs.performance_issues }};
+            
+            let status = errors === 0 ? '✅ **PASSED**' : '❌ **FAILED**';
+            let color = errors === 0 ? '🟢' : '🔴';
+            
+            const body = `
+            ## ${color} Datapack Validation Results
+            
+            **Status:** ${status}
+            
+            ### 📊 Metrics
+            - **Functions:** ${{ steps.validation.outputs.total_functions }}
+            - **Commands:** ${{ steps.validation.outputs.total_commands }}
+            - **Errors:** ${errors}
+            - **Warnings:** ${warnings}
+            - **Security Issues:** ${security}
+            - **Performance Issues:** ${performance}
+            
+            ${errors > 0 ? '### ❌ Action Required\nPlease fix the errors listed in the workflow logs.' : ''}
+            ${security > 0 ? '### 🔒 Security Notice\nSome patterns were flagged for review. Please verify they are intentional.' : ''}
+            ${performance > 0 ? '### ⚡ Performance Notice\nConsider optimizing flagged operations for better performance.' : ''}
+            `;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
