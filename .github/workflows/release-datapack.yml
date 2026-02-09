@@ -1,7 +1,9 @@
 name: Release Datapack
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -25,13 +27,10 @@ jobs:
           ls -la new_versions/ || echo "ERROR: new_versions not found!"
           echo ""
           echo "=== All folders in new_versions ==="
-          ls -1 new_versions/ || echo "Empty or not found"
+          ls -1 new_versions/ || echo "Empty"
           echo ""
           echo "=== Looking for datapack folders ==="
-          find new_versions -type d -name "datapack" 2>/dev/null || echo "No datapack folders found"
-          echo ""
-          echo "=== Full tree ==="
-          find new_versions -type f 2>/dev/null | head -20 || echo "No files"
+          find new_versions -type d -name "datapack" 2>/dev/null || echo "No datapack"
       
       - name: Get Latest Version
         id: version
@@ -39,53 +38,33 @@ jobs:
           latest=$(ls -1 new_versions/ 2>/dev/null | sort -V | tail -n 1)
           
           if [ -z "$latest" ]; then
-            echo "::error::No version folders found in new_versions/"
-            echo "Available folders:"
-            ls -la new_versions/ || echo "new_versions does not exist"
+            echo "::error::No version folders found"
             exit 1
           fi
           
           echo "mc_version=$latest" >> $GITHUB_OUTPUT
           echo "tag_name=v$latest" >> $GITHUB_OUTPUT
-          echo "::notice::Found version: $latest"
           
           mcmeta="new_versions/$latest/datapack/pack.mcmeta"
           if [ -f "$mcmeta" ]; then
             pack_format=$(grep -oP '"pack_format"\s*:\s*\K\d+' "$mcmeta" 2>/dev/null || echo "1")
           else
-            echo "::warning::pack.mcmeta not found at $mcmeta"
             pack_format="1"
           fi
           
           echo "pack_format=$pack_format" >> $GITHUB_OUTPUT
+          echo "Found: $latest (format: $pack_format)"
       
       - name: Validate Datapack
         run: |
           DIR="new_versions/${{ steps.version.outputs.mc_version }}/datapack"
           
-          echo "Checking directory: $DIR"
+          [ ! -d "$DIR" ] && echo "::error::Missing datapack dir" && exit 1
+          [ ! -f "$DIR/pack.mcmeta" ] && echo "::error::Missing pack.mcmeta" && exit 1
+          [ ! -d "$DIR/data" ] && echo "::error::Missing data folder" && exit 1
           
-          if [ ! -d "$DIR" ]; then
-            echo "::error::Datapack directory not found: $DIR"
-            echo "Directory structure:"
-            ls -R "new_versions/${{ steps.version.outputs.mc_version }}/" || echo "Version folder not found"
-            exit 1
-          fi
-          
-          if [ ! -f "$DIR/pack.mcmeta" ]; then
-            echo "::error::pack.mcmeta not found"
-            ls -la "$DIR"
-            exit 1
-          fi
-          
-          if [ ! -d "$DIR/data" ]; then
-            echo "::error::data folder not found"
-            ls -la "$DIR"
-            exit 1
-          fi
-          
-          echo "✅ Datapack structure is valid"
-          ls -R "$DIR" | head -50
+          echo "Valid datapack"
+          ls -R "$DIR" | head -30
       
       - name: Create ZIP
         run: |
@@ -96,11 +75,7 @@ jobs:
           zip -r "$GITHUB_WORKSPACE/$ZIP" . -x "*.git*" -x ".DS_Store"
           
           cd "$GITHUB_WORKSPACE"
-          echo "ZIP created:"
           ls -lh "$ZIP"
-          echo ""
-          echo "ZIP contents (first 30 lines):"
-          unzip -l "$ZIP" | head -30
       
       - name: Generate Changelog
         id: changelog
@@ -110,14 +85,14 @@ jobs:
           if [ -z "$PREV" ]; then
             CHANGES="Initial release for Minecraft ${{ steps.version.outputs.mc_version }}"
           else
-            CHANGES=$(git log ${PREV}..HEAD --oneline --no-merges -- "new_versions/${{ steps.version.outputs.mc_version }}/datapack/**" 2>/dev/null | sed 's/^/- /' || echo "- Updated datapack")
+            CHANGES=$(git log ${PREV}..HEAD --oneline --no-merges -- "new_versions/${{ steps.version.outputs.mc_version }}/datapack/**" 2>/dev/null | sed 's/^/- /' || echo "- Updated")
           fi
           
           echo "changelog<<EOF" >> $GITHUB_OUTPUT
           echo "$CHANGES" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
       
-      - name: Delete existing release if exists
+      - name: Delete existing release
         continue-on-error: true
         run: |
           gh release delete "${{ steps.version.outputs.tag_name }}" --yes 2>/dev/null || true
@@ -149,7 +124,6 @@ jobs:
           files: mc-server-toolkit-${{ steps.version.outputs.mc_version }}.zip
           draft: false
           prerelease: false
-          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
@@ -159,4 +133,3 @@ jobs:
           echo "## ✅ Release Created!" >> $GITHUB_STEP_SUMMARY
           echo "**Version:** ${{ steps.version.outputs.mc_version }}" >> $GITHUB_STEP_SUMMARY
           echo "**Tag:** ${{ steps.version.outputs.tag_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Release:** https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag_name }}" >> $GITHUB_STEP_SUMMARY
