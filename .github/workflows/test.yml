@@ -1,0 +1,35 @@
+name: Test Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Check structure
+        run: |
+          echo "=== Repository structure ==="
+          ls -la
+          echo ""
+          echo "=== new_versions folder ==="
+          ls -la new_versions/ || echo "new_versions folder not found!"
+          echo ""
+          echo "=== Datapack folders ==="
+          find new_versions -type d -name "datapack" || echo "No datapack folders found!"
+      
+      - name: Create dummy release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: test-v1.0.0
+          name: "Test Release"
+          body: "This is a test release"
+          draft: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
