@@ -1,84 +1,38 @@
-name: Release Datapack
+name: Test Release
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'new_versions/**'
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  release:
+  test:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Find latest version
-        id: version
+      - name: Check structure
         run: |
-          if [ ! -d "new_versions" ]; then
-            echo "new_versions folder not found"
-            exit 1
-          fi
+          echo "=== Repository structure ==="
+          ls -la
+          echo ""
 
-          latest=$(ls -1 new_versions/ | sort -V | tail -n 1)
+          echo "=== new_versions folder ==="
+          ls -la new_versions/ || echo "new_versions folder not found!"
+          echo ""
 
-          if [ -z "$latest" ]; then
-            echo "No version folders found"
-            exit 1
-          fi
+          echo "=== Datapack folders ==="
+          find new_versions -type d -name "datapack" || echo "No datapack folders found!"
 
-          echo "Latest version: $latest"
-          echo "mc_version=$latest" >> $GITHUB_OUTPUT
-          echo "tag_name=v$latest" >> $GITHUB_OUTPUT
-
-      - name: Validate datapack
-        run: |
-          DIR="new_versions/${{ steps.version.outputs.mc_version }}/datapack"
-
-          echo "Checking: $DIR"
-
-          if [ ! -d "$DIR" ]; then
-            echo "Datapack folder missing"
-            exit 1
-          fi
-
-          if [ ! -f "$DIR/pack.mcmeta" ]; then
-            echo "pack.mcmeta missing"
-            exit 1
-          fi
-
-          if [ ! -d "$DIR/data" ]; then
-            echo "data folder missing"
-            exit 1
-          fi
-
-          echo "Datapack structure OK"
-
-      - name: Create ZIP
-        run: |
-          VERSION="${{ steps.version.outputs.mc_version }}"
-          DIR="new_versions/$VERSION/datapack"
-          ZIP="mc-server-toolkit-$VERSION.zip"
-
-          cd "$DIR"
-          zip -r "$GITHUB_WORKSPACE/$ZIP" . -x "*.git*" -x ".DS_Store"
-
-          echo "ZIP created:"
-          ls -la "$GITHUB_WORKSPACE"
-
-      - name: Create GitHub Release
+      - name: Create dummy release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.tag_name }}
-          name: MC Server Toolkit v${{ steps.version.outputs.mc_version }}
-          body: Release for Minecraft ${{ steps.version.outputs.mc_version }}
-          files: mc-server-toolkit-${{ steps.version.outputs.mc_version }}.zip
+          tag_name: test-v1.0.0
+          name: "Test Release"
+          body: "This is a test release"
+          draft: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
