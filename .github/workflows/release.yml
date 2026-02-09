@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - 'new_versions/**/datapack/**'
+      - 'new_versions/**'
   workflow_dispatch:
 
 permissions:
@@ -16,57 +16,75 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Get Latest Version
         id: version
         run: |
-          latest=$(ls -1 new_versions/ 2>/dev/null | sort -V | tail -n 1)
+          latest_version=$(find new_versions -maxdepth 1 -mindepth 1 -type d -printf '%f\n' 2>/dev/null | sort -V | tail -n 1)
 
-          if [ -z "$latest" ]; then
+          if [ -z "$latest_version" ]; then
             echo "No version folders found"
             exit 1
           fi
 
-          echo "mc_version=$latest" >> $GITHUB_OUTPUT
-          echo "tag_name=v$latest" >> $GITHUB_OUTPUT
+          echo "Found Minecraft version: $latest_version"
+          echo "mc_version=$latest_version" >> $GITHUB_OUTPUT
+          echo "tag_name=$latest_version" >> $GITHUB_OUTPUT
 
       - name: Validate Datapack
         run: |
-          DIR="new_versions/${{ steps.version.outputs.mc_version }}/datapack"
+          datapack_path="new_versions/${{ steps.version.outputs.mc_version }}/datapack"
 
-          if [ ! -d "$DIR" ]; then
-            echo "Missing datapack dir"
+          if [ ! -d "$datapack_path" ]; then
+            echo "Datapack folder missing"
             exit 1
           fi
 
-          if [ ! -f "$DIR/pack.mcmeta" ]; then
-            echo "Missing pack.mcmeta"
+          if [ ! -f "$datapack_path/pack.mcmeta" ]; then
+            echo "pack.mcmeta missing"
             exit 1
           fi
 
-          if [ ! -d "$DIR/data" ]; then
-            echo "Missing data folder"
+          if [ ! -d "$datapack_path/data" ]; then
+            echo "data folder missing"
             exit 1
           fi
 
-          echo "Datapack valid"
+          echo "Datapack structure validated"
 
-      - name: Create ZIP
+      - name: Package Datapack
         run: |
-          DIR="new_versions/${{ steps.version.outputs.mc_version }}/datapack"
-          ZIP="mc-server-toolkit-${{ steps.version.outputs.mc_version }}.zip"
+          version="${{ steps.version.outputs.mc_version }}"
+          datapack_path="new_versions/$version/datapack"
+          zip_name="mc-server-toolkit-$version.zip"
 
-          cd "$DIR"
-          zip -r "$GITHUB_WORKSPACE/$ZIP" . -x "*.git*" -x ".DS_Store"
+          cd "$datapack_path"
+          zip -r "$GITHUB_WORKSPACE/$zip_name" . -x "*.git*" -x ".DS_Store"
+
+          echo "Created ZIP package:"
+          ls -lh "$GITHUB_WORKSPACE/$zip_name"
+
+      - name: Verify ZIP
+        run: |
+          version="${{ steps.version.outputs.mc_version }}"
+          zip_name="mc-server-toolkit-$version.zip"
+
+          if [ ! -f "$zip_name" ]; then
+            echo "ZIP not found"
+            exit 1
+          fi
+
+          unzip -t "$zip_name" > /dev/null
+          echo "ZIP validated successfully"
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag_name }}
-          name: "MC Server Toolkit v${{ steps.version.outputs.mc_version }}"
-          body: "Release for Minecraft ${{ steps.version.outputs.mc_version }}"
+          name: MC Server Toolkit ${{ steps.version.outputs.mc_version }}
+          body: Release for Minecraft ${{ steps.version.outputs.mc_version }}
           files: mc-server-toolkit-${{ steps.version.outputs.mc_version }}.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
