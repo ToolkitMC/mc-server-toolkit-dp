@@ -1,0 +1,209 @@
+name: Release Datapack
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'new_versions/**/datapack/**'
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+      
+    - name: Get Latest Version
+      id: version
+      run: |
+        # En son MC versiyonunu bul (güvenli şekilde)
+        latest_version=$(find new_versions -maxdepth 1 -mindepth 1 -type d -printf '%f\n' 2>/dev/null | sort -V | tail -n 1)
+        
+        # Klasör boşsa çık
+        if [ -z "$latest_version" ]; then
+          echo "::error::No versions found in new_versions/"
+          exit 1
+        fi
+        
+        echo "mc_version=$latest_version" >> $GITHUB_OUTPUT
+        echo "::notice::Found Minecraft version: $latest_version"
+        
+        # pack.mcmeta dosyası kontrolü
+        mcmeta_file="new_versions/$latest_version/datapack/pack.mcmeta"
+        if [ ! -f "$mcmeta_file" ]; then
+          echo "::warning::pack.mcmeta not found at $mcmeta_file, using default pack_format=1"
+          pack_format="1"
+        else
+          # pack_format'ı al (Perl regex olmadan)
+          pack_format=$(grep '"pack_format"' "$mcmeta_file" | grep -o '[0-9]\+' | head -n 1)
+          pack_format=${pack_format:-1}
+          echo "::notice::Detected pack_format: $pack_format"
+        fi
+        
+        # Temiz version tag oluştur
+        echo "version=v${latest_version}" >> $GITHUB_OUTPUT
+        echo "pack_format=${pack_format}" >> $GITHUB_OUTPUT
+        
+        echo "::notice::Will create release with tag: v${latest_version}"
+    
+    - name: Validate Datapack Structure
+      run: |
+        datapack_path="new_versions/${{ steps.version.outputs.mc_version }}/datapack"
+        
+        # Datapack klasörü var mı kontrol et
+        if [ ! -d "$datapack_path" ]; then
+          echo "::error::Datapack directory not found: $datapack_path"
+          exit 1
+        fi
+        
+        # data klasörü var mı kontrol et
+        if [ ! -d "$datapack_path/data" ]; then
+          echo "::error::Invalid datapack structure: missing 'data' folder"
+          exit 1
+        fi
+        
+        # pack.mcmeta var mı kontrol et
+        if [ ! -f "$datapack_path/pack.mcmeta" ]; then
+          echo "::error::Invalid datapack structure: missing 'pack.mcmeta' file"
+          exit 1
+        fi
+        
+        echo "::notice::Datapack structure validation passed"
+        
+        # Namespace'leri listele
+        echo "Found namespaces:"
+        find "$datapack_path/data" -maxdepth 1 -mindepth 1 -type d -printf '%f\n' | while read namespace; do
+          echo "  - $namespace"
+        done
+    
+    - name: Package Datapack
+      run: |
+        datapack_path="new_versions/${{ steps.version.outputs.mc_version }}/datapack"
+        output_file="$GITHUB_WORKSPACE/mc-server-toolkit-${{ steps.version.outputs.mc_version }}.zip"
+        
+        echo "::group::Creating ZIP package"
+        cd "$datapack_path"
+        
+        # ZIP oluştur (gizli dosyaları hariç tut)
+        zip -r -q "$output_file" . -x '*/\.*' -x '\.*' -x '__MACOSX/*' -x '*.DS_Store'
+        
+        if [ ! -f "$output_file" ]; then
+          echo "::error::Failed to create ZIP file"
+          exit 1
+        fi
+        
+        file_size=$(du -h "$output_file" | cut -f1)
+        echo "::notice::Created ZIP package: $file_size"
+        echo "::endgroup::"
+        
+    - name: Verify ZIP Contents
+      run: |
+        zip_file="mc-server-toolkit-${{ steps.version.outputs.mc_version }}.zip"
+        
+        echo "::group::ZIP Contents"
+        unzip -l "$zip_file"
+        echo "::endgroup::"
+        
+        # ZIP içinde pack.mcmeta olduğunu doğrula
+        if ! unzip -l "$zip_file" | grep -q "pack.mcmeta"; then
+          echo "::error::pack.mcmeta not found in ZIP file"
+          exit 1
+        fi
+        
+        # ZIP içinde data klasörü olduğunu doğrula
+        if ! unzip -l "$zip_file" | grep -q "data/"; then
+          echo "::error::data folder not found in ZIP file"
+          exit 1
+        fi
+        
+        echo "::notice::ZIP validation passed"
+        
+    - name: Generate Changelog
+      id: changelog
+      run: |
+        echo "::group::Generating Changelog"
+        
+        # Önceki tag'i bul
+        previous_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+        
+        if [ -n "$previous_tag" ]; then
+          echo "::notice::Previous tag: $previous_tag"
+          
+          # Değişiklikleri al
+          changes=$(git log ${previous_tag}..HEAD --pretty=format:"- %s (%h)" --no-merges -- "new_versions/${{ steps.version.outputs.mc_version }}/datapack/**" || echo "")
+          
+          if [ -n "$changes" ]; then
+            echo "changes<<EOF" >> $GITHUB_OUTPUT
+            echo "$changes" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "changes=No changes recorded" >> $GITHUB_OUTPUT
+          fi
+        else
+          echo "::notice::No previous tag found, this is the first release"
+          echo "changes=Initial release" >> $GITHUB_OUTPUT
+        fi
+        
+        echo "::endgroup::"
+        
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ steps.version.outputs.version }}
+        name: "MC Server Toolkit for Minecraft ${{ steps.version.outputs.mc_version }}"
+        files: mc-server-toolkit-${{ steps.version.outputs.mc_version }}.zip
+        body: |
+          ## 📦 Minecraft Server Toolkit Datapack
+          
+          ### 📋 Information
+          - **Minecraft Version:** `${{ steps.version.outputs.mc_version }}`
+          - **Pack Format:** `${{ steps.version.outputs.pack_format }}`
+          - **Release Date:** `${{ github.event.head_commit.timestamp }}`
+          - **Commit:** `${{ github.sha }}`
+          
+          ### 📝 Changes
+          ${{ steps.changelog.outputs.changes }}
+          
+          ### 🚀 Installation
+          1. Download the `mc-server-toolkit-${{ steps.version.outputs.mc_version }}.zip` file below
+          2. Navigate to your Minecraft world folder
+          3. Place the ZIP file in the `datapacks` folder
+          4. Launch Minecraft and load your world
+          5. Run `/reload` command in-game to activate the datapack
+          6. Verify installation with `/datapack list`
+          
+          ### 📥 Download
+          [⬇️ Download mc-server-toolkit-${{ steps.version.outputs.mc_version }}.zip](https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.version }}/mc-server-toolkit-${{ steps.version.outputs.mc_version }}.zip)
+          
+          ### ℹ️ Requirements
+          - Minecraft Java Edition `${{ steps.version.outputs.mc_version }}` or compatible versions
+          - Server or Singleplayer world with datapack support enabled
+          - No additional dependencies required
+          
+          ### 🐛 Issues & Support
+          If you encounter any issues, please report them on the [Issues page](https://github.com/${{ github.repository }}/issues).
+          
+          ---
+          
+          *Automatically generated by GitHub Actions*
+        draft: false
+        prerelease: false
+        make_latest: true
+        fail_on_unmatched_files: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Release Summary
+      if: success()
+      run: |
+        echo "::notice::✅ Release created successfully!"
+        echo "::notice::📌 Tag: ${{ steps.version.outputs.version }}"
+        echo "::notice::🎮 Minecraft Version: ${{ steps.version.outputs.mc_version }}"
+        echo "::notice::📦 Pack Format: ${{ steps.version.outputs.pack_format }}"
+        echo "::notice::🔗 Release URL: https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.version }}"
