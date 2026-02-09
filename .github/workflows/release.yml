@@ -18,8 +18,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       
       - name: Get Latest Version
         id: version
@@ -34,42 +32,26 @@ jobs:
           echo "mc_version=$latest" >> $GITHUB_OUTPUT
           echo "tag_name=v$latest" >> $GITHUB_OUTPUT
       
-      - name: Validate Datapack
-        run: |
-          DIR="new_versions/${{ steps.version.outputs.mc_version }}/datapack"
-          
-          [ -d "$DIR" ] || (echo "::error::Missing datapack dir" && exit 1)
-          [ -f "$DIR/pack.mcmeta" ] || (echo "::error::Missing pack.mcmeta" && exit 1)
-          [ -d "$DIR/data" ] || (echo "::error::Missing data folder" && exit 1)
-          
-          echo "Valid datapack"
-      
       - name: Create ZIP
         run: |
           DIR="new_versions/${{ steps.version.outputs.mc_version }}/datapack"
           ZIP="mc-server-toolkit-${{ steps.version.outputs.mc_version }}.zip"
           
+          if [ ! -d "$DIR" ]; then
+            echo "::error::Missing datapack dir"
+            exit 1
+          fi
+          
           cd "$DIR"
           zip -r "$GITHUB_WORKSPACE/$ZIP" . -x "*.git*" -x ".DS_Store"
-      
-      - name: Create tag if missing
-        run: |
-          TAG="${{ steps.version.outputs.tag_name }}"
-          
-          if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Tag already exists"
-          else
-            git config user.name "github-actions"
-            git config user.email "actions@github.com"
-            git tag "$TAG"
-            git push origin "$TAG"
-          fi
       
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag_name }}
           name: "MC Server Toolkit v${{ steps.version.outputs.mc_version }}"
+          body: "Release for Minecraft ${{ steps.version.outputs.mc_version }}"
           files: mc-server-toolkit-${{ steps.version.outputs.mc_version }}.zip
+          draft: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
