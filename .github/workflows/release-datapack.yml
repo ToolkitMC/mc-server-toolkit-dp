@@ -91,7 +91,7 @@ jobs:
           fi
           
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.version.outputs.version }}
           name: "MC Server Toolkit for Minecraft ${{ steps.version.outputs.mc_version }}"
@@ -128,7 +128,6 @@ jobs:
           draft: false
           prerelease: false
           fail_on_unmatched_files: true
-          make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
