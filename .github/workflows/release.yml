@@ -14,38 +14,70 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    continue-on-error: true
     
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        continue-on-error: true
       
       - name: Get Latest Version
         id: version
+        continue-on-error: true
         run: |
           latest=$(ls -1 new_versions/ 2>/dev/null | sort -V | tail -n 1)
           
           if [ -z "$latest" ]; then
-            echo "::error::No version folders found"
-            exit 1
+            echo "No version folders found. Skipping release."
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
           fi
           
           echo "mc_version=$latest" >> $GITHUB_OUTPUT
           echo "tag_name=v$latest" >> $GITHUB_OUTPUT
+          echo "skip=false" >> $GITHUB_OUTPUT
+      
+      - name: Validate Datapack
+        if: steps.version.outputs.skip != 'true'
+        continue-on-error: true
+        run: |
+          DIR="new_versions/${{ steps.version.outputs.mc_version }}/datapack"
+          
+          if [ ! -d "$DIR" ]; then
+            echo "Missing datapack dir. Skipping."
+            exit 0
+          fi
+          
+          if [ ! -f "$DIR/pack.mcmeta" ]; then
+            echo "Missing pack.mcmeta. Skipping."
+            exit 0
+          fi
+          
+          if [ ! -d "$DIR/data" ]; then
+            echo "Missing data folder. Skipping."
+            exit 0
+          fi
+          
+          echo "Valid datapack"
       
       - name: Create ZIP
+        if: steps.version.outputs.skip != 'true'
+        continue-on-error: true
         run: |
           DIR="new_versions/${{ steps.version.outputs.mc_version }}/datapack"
           ZIP="mc-server-toolkit-${{ steps.version.outputs.mc_version }}.zip"
           
           if [ ! -d "$DIR" ]; then
-            echo "::error::Missing datapack dir"
-            exit 1
+            echo "Datapack not found. Skipping."
+            exit 0
           fi
           
           cd "$DIR"
-          zip -r "$GITHUB_WORKSPACE/$ZIP" . -x "*.git*" -x ".DS_Store"
+          zip -r "$GITHUB_WORKSPACE/$ZIP" . -x "*.git*" -x ".DS_Store" || true
       
       - name: Create Release
+        if: steps.version.outputs.skip != 'true'
+        continue-on-error: true
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag_name }}
