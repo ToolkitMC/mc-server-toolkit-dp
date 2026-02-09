@@ -52,4 +52,5 @@ execute if data storage mc:config {Config:{Enabled:1b}} run function gss_securit
 # Başarı mesajı sadece işlemler tamamlandığında @a (herkese) gider.
 execute if data storage mc:config {Config:{Enabled:1b}} run playsound minecraft:block.stone_button.click_off master @a ~ ~ ~ 1 1 1
 execute if data storage mc:config {Config:{Enabled:1b}} run tellraw @a ["",{"text":"[GulceOS] ","color":"dark_aqua"},{"text":"Sistem hazır! ✅","color":"green"}]
+execute if data storage mc:config {Config:{Enabled:1b}} run function gulce_adminpower_addons:loaded
 execute if data storage mc:config {Config:{Enabled:1b}} run tellraw @a ["",{"text":"[Schedule] ","color":"gold"},{"text":"Scheduled ticks aktif (TPS korumalı)","color":"yellow"}]
