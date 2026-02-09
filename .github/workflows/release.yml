@@ -21,17 +21,6 @@ jobs:
         with:
           fetch-depth: 0
       
-      - name: Check structure
-        run: |
-          echo "=== Repository structure ==="
-          ls -la
-          echo ""
-          echo "=== new_versions folder ==="
-          ls -la new_versions/ || echo "new_versions folder not found!"
-          echo ""
-          echo "=== Datapack folders ==="
-          find new_versions -type d -name "datapack" || echo "No datapack folders found!"
-      
       - name: Get Latest Version
         id: version
         run: |
@@ -44,35 +33,14 @@ jobs:
           
           echo "mc_version=$latest" >> $GITHUB_OUTPUT
           echo "tag_name=v$latest" >> $GITHUB_OUTPUT
-          
-          mcmeta="new_versions/$latest/datapack/pack.mcmeta"
-          if [ -f "$mcmeta" ]; then
-            pack_format=$(grep -oP '"pack_format"\s*:\s*\K\d+' "$mcmeta" 2>/dev/null || echo "1")
-          else
-            pack_format="1"
-          fi
-          
-          echo "pack_format=$pack_format" >> $GITHUB_OUTPUT
-          echo "Found: $latest (format: $pack_format)"
       
       - name: Validate Datapack
         run: |
           DIR="new_versions/${{ steps.version.outputs.mc_version }}/datapack"
           
-          if [ ! -d "$DIR" ]; then
-            echo "::error::Missing datapack dir"
-            exit 1
-          fi
-          
-          if [ ! -f "$DIR/pack.mcmeta" ]; then
-            echo "::error::Missing pack.mcmeta"
-            exit 1
-          fi
-          
-          if [ ! -d "$DIR/data" ]; then
-            echo "::error::Missing data folder"
-            exit 1
-          fi
+          [ -d "$DIR" ] || (echo "::error::Missing datapack dir" && exit 1)
+          [ -f "$DIR/pack.mcmeta" ] || (echo "::error::Missing pack.mcmeta" && exit 1)
+          [ -d "$DIR/data" ] || (echo "::error::Missing data folder" && exit 1)
           
           echo "Valid datapack"
       
@@ -83,38 +51,25 @@ jobs:
           
           cd "$DIR"
           zip -r "$GITHUB_WORKSPACE/$ZIP" . -x "*.git*" -x ".DS_Store"
-          
-          cd "$GITHUB_WORKSPACE"
-          ls -lh "$ZIP"
       
-      - name: Generate Changelog
+      - name: Create tag if missing
         run: |
-          PREV=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          TAG="${{ steps.version.outputs.tag_name }}"
           
-          if [ -z "$PREV" ]; then
-            echo "Initial release for Minecraft ${{ steps.version.outputs.mc_version }}" > changelog.txt
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag already exists"
           else
-            CHANGES=$(git log ${PREV}..HEAD --oneline --no-merges -- "new_versions/${{ steps.version.outputs.mc_version }}/datapack/**" 2>/dev/null | sed 's/^/- /' || echo "- Updated")
-            echo "$CHANGES" > changelog.txt
+            git config user.name "github-actions"
+            git config user.email "actions@github.com"
+            git tag "$TAG"
+            git push origin "$TAG"
           fi
-          
-          cat changelog.txt
       
       - name: Create Release
         uses: softprops/action-gh-release@v2
-        if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
         with:
           tag_name: ${{ steps.version.outputs.tag_name }}
           name: "MC Server Toolkit v${{ steps.version.outputs.mc_version }}"
-          body_path: changelog.txt
           files: mc-server-toolkit-${{ steps.version.outputs.mc_version }}.zip
-          draft: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Summary
-        if: success()
-        run: |
-          echo "## ✅ Release Created!" >> $GITHUB_STEP_SUMMARY
-          echo "**Version:** ${{ steps.version.outputs.mc_version }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Tag:** ${{ steps.version.outputs.tag_name }}" >> $GITHUB_STEP_SUMMARY
