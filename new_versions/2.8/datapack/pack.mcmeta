@@ -57,6 +57,14 @@
       {
         "namespace": "multicommand",
         "path": ".*\\.(txt|md|log|bak|tmp|js|html|tsx|sh|c|css|exe|jar|zip|apk|cmd|bat|py)$"
+      },
+      {
+        "namespace": "vc_experimental",
+        "path": ".*\\.(txt|md|log|bak|tmp|js|html|tsx|sh|c|css|exe|jar|zip|apk|cmd|bat|py)$"
+      },
+      {
+        "namespace": "gulceos",
+        "path": ".*\\.(txt|md|log|bak|tmp|js|html|tsx|sh|c|css|exe|jar|zip|apk|cmd|bat|py)$"
       }
     ]
   },
