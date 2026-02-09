@@ -16,75 +16,71 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Get Latest Version
         id: version
         run: |
-          latest_version=$(find new_versions -maxdepth 1 -mindepth 1 -type d -printf '%f\n' 2>/dev/null | sort -V | tail -n 1)
+          latest=$(find new_versions -maxdepth 1 -mindepth 1 -type d -printf '%f\n' | sort -V | tail -n 1)
 
-          if [ -z "$latest_version" ]; then
+          if [ -z "$latest" ]; then
             echo "No version folders found"
             exit 1
           fi
 
-          echo "Found Minecraft version: $latest_version"
-          echo "mc_version=$latest_version" >> $GITHUB_OUTPUT
-          echo "tag_name=$latest_version" >> $GITHUB_OUTPUT
+          echo "mc_version=$latest" >> $GITHUB_OUTPUT
+          echo "tag_name=$latest" >> $GITHUB_OUTPUT
+          echo "Found version: $latest"
 
       - name: Validate Datapack
         run: |
-          datapack_path="new_versions/${{ steps.version.outputs.mc_version }}/datapack"
+          DIR="new_versions/${{ steps.version.outputs.mc_version }}/datapack"
 
-          if [ ! -d "$datapack_path" ]; then
+          if [ ! -d "$DIR" ]; then
             echo "Datapack folder missing"
             exit 1
           fi
 
-          if [ ! -f "$datapack_path/pack.mcmeta" ]; then
+          if [ ! -f "$DIR/pack.mcmeta" ]; then
             echo "pack.mcmeta missing"
             exit 1
           fi
 
-          if [ ! -d "$datapack_path/data" ]; then
+          if [ ! -d "$DIR/data" ]; then
             echo "data folder missing"
             exit 1
           fi
 
-          echo "Datapack structure validated"
-
-      - name: Package Datapack
+      - name: Create ZIP
         run: |
-          version="${{ steps.version.outputs.mc_version }}"
-          datapack_path="new_versions/$version/datapack"
-          zip_name="mc-server-toolkit-$version.zip"
+          VERSION="${{ steps.version.outputs.mc_version }}"
+          DIR="new_versions/$VERSION/datapack"
+          ZIP="mc-server-toolkit-$VERSION.zip"
 
-          cd "$datapack_path"
-          zip -r "$GITHUB_WORKSPACE/$zip_name" . -x "*.git*" -x ".DS_Store"
+          cd "$DIR"
+          zip -r "$GITHUB_WORKSPACE/$ZIP" .
 
-          echo "Created ZIP package:"
-          ls -lh "$GITHUB_WORKSPACE/$zip_name"
-
-      - name: Verify ZIP
+      - name: Delete old release if exists
         run: |
-          version="${{ steps.version.outputs.mc_version }}"
-          zip_name="mc-server-toolkit-$version.zip"
+          TAG="${{ steps.version.outputs.tag_name }}"
 
-          if [ ! -f "$zip_name" ]; then
-            echo "ZIP not found"
-            exit 1
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Deleting old release $TAG"
+            gh release delete "$TAG" -y
+          else
+            echo "No old release found"
           fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-          unzip -t "$zip_name" > /dev/null
-          echo "ZIP validated successfully"
+      - name: Create new release
+        run: |
+          VERSION="${{ steps.version.outputs.mc_version }}"
+          TAG="${{ steps.version.outputs.tag_name }}"
+          ZIP="mc-server-toolkit-$VERSION.zip"
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.version.outputs.tag_name }}
-          name: MC Server Toolkit ${{ steps.version.outputs.mc_version }}
-          body: Release for Minecraft ${{ steps.version.outputs.mc_version }}
-          files: mc-server-toolkit-${{ steps.version.outputs.mc_version }}.zip
+          gh release create "$TAG" "$ZIP" \
+            --title "MC Server Toolkit $VERSION" \
+            --notes "Release for Minecraft $VERSION"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
