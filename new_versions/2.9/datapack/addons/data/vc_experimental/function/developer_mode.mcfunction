@@ -9,4 +9,4 @@ $tag $(target) add gss_security.log._.debug
 playsound minecraft:ui.toast.challenge_complete player @s ~ ~ ~ 1 0
 
 # Debug
-$tellraw @s [{"text":"[DEV]","color":"dark_gray"},{"text":" "},{"selector":"$(target)","color":"gold"},{"text":" → yetkiler yüklendi.","color":"gray"}]
+$tellraw $(target) [{"text":"[DEV]","color":"dark_gray"},{"text":" "},{"selector":"$(target)","color":"gold"},{"text":" → yetkiler yüklendi.","color":"gray"}]
