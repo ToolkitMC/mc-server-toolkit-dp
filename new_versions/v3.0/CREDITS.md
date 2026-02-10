@@ -11,7 +11,7 @@
   <li>
     <strong>Orijinal Kaynak:</strong>
     <a href="https://batuhangg.com.tr/minecraft-en-guclu-tek-atan-siginc-1000-topuz-mace-kodu" target="_blank" rel="noopener noreferrer">
-      BatuhanGG (Web Sitesi)
+      BatuhanGG
     </a>
   </li>
   <li>
@@ -45,3 +45,4 @@
     yeniden yapılandırılmıştır.
   </p>
 </blockquote>
+
