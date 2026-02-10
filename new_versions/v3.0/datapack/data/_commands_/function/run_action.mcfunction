@@ -1,1 +1,0 @@
-$function custom_admin:execute/with_cooldown {"player":"@s","id":"$(id)"}

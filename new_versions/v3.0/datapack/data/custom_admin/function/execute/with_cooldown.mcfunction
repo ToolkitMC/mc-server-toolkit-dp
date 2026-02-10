@@ -1,1 +1,0 @@
-$function cooldown:execute/action {"id":"$(player)","action":"$(id)"}

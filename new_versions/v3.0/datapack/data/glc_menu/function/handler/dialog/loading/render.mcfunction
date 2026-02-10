@@ -1,2 +1,0 @@
-# render.mcfunction
-$dialog show @s {type:"minecraft:notice",title:{"text":"$(title)"},body:{"type":"minecraft:plain_message","contents":"$(body)"},can_close_with_escape:0b,pause:0b,after_action:"none",action:{label:"$(cancel)",action:{type:"minecraft:run_command",command:"$(value)"}}}

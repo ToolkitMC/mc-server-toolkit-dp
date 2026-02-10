@@ -1,8 +1,0 @@
-{
-  "replace": false,
-  "values": [
-    "main:load",
-    "scheduler:init",
-    "player_tracker:init"
-  ]
-}
