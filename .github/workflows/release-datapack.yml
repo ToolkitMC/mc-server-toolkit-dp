@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Tüm geçmişi alıyoruz
+          fetch-depth: 0
       
       - name: Get Latest Version
         id: version
@@ -27,20 +27,25 @@ jobs:
           
           # Bu versiyon için tag var mı kontrol et
           tag_pattern="${latest}-build"
-          existing_tags=$(git tag -l "${tag_pattern}*" | wc -l)
+          existing_tags=$(git tag -l "${tag_pattern}*")
           
-          if [ "$existing_tags" -gt 0 ]; then
+          if [ -n "$existing_tags" ]; then
             echo "Release already exists for version $latest"
             echo "skip=true" >> $GITHUB_OUTPUT
-            exit 0
+          else
+            build="${GITHUB_RUN_NUMBER}"
+            tag="${latest}-build${build}"
+            echo "mc_version=$latest" >> $GITHUB_OUTPUT
+            echo "tag_name=$tag" >> $GITHUB_OUTPUT
+            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "Creating new release with tag: $tag"
           fi
-          
-          build="${GITHUB_RUN_NUMBER}"
-          tag="${latest}-build${build}"
-          echo "mc_version=$latest" >> $GITHUB_OUTPUT
-          echo "tag_name=$tag" >> $GITHUB_OUTPUT
-          echo "skip=false" >> $GITHUB_OUTPUT
-          echo "Creating new release with tag: $tag"
+      
+      - name: Check if should skip
+        if: steps.version.outputs.skip == 'true'
+        run: |
+          echo "Skipping release - version already released"
+          exit 0
       
       - name: Validate Datapack
         if: steps.version.outputs.skip != 'true'
