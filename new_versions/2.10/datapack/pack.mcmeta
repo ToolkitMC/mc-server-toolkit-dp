@@ -1,0 +1,158 @@
+{
+  "pack": {
+    "pack_format": 94,
+    "description": {
+      "text": "VanillaControl by Legends11",
+      "color": "gold",
+      "bold": true,
+      "italic": false,
+      "underlined": false,
+      "strikethrough": false,
+      "obfuscated": false
+    },
+    "supported_formats": {
+      "min_inclusive": 81,
+      "max_inclusive": 94
+    },
+    "min_format": [
+      81,
+      1
+    ],
+    "max_format": 94
+  },
+  "filter": {
+    "block": [
+      {
+        "namespace": "minecraft",
+        "path": ".*\\.(txt|md|log|bak|tmp|js|html|tsx|sh|c|css|exe|jar|zip|apk|cmd|bat|py)$"
+      },
+      {
+        "namespace": "custom",
+        "path": ".*\\.(txt|md|log|bak|tmp|js|html|tsx|sh|c|css|exe|jar|zip|apk|cmd|bat|py)$"
+      },
+      {
+        "namespace": "custom_admin",
+        "path": ".*\\.(txt|md|log|bak|tmp|js|html|tsx|sh|c|css|exe|jar|zip|apk|cmd|bat|py)$"
+      },
+      {
+        "namespace": "actions",
+        "path": ".*\\.(txt|md|log|bak|tmp|js|html|tsx|sh|c|css|exe|jar|zip|apk|cmd|bat|py)$"
+      },
+      {
+        "namespace": "_custom",
+        "path": ".*\\.(txt|md|log|bak|tmp|js|html|tsx|sh|c|css|exe|jar|zip|apk|cmd|bat|py)$"
+      },
+      {
+        "namespace": "glc_menu",
+        "path": ".*\\.(txt|md|log|bak|tmp|js|html|tsx|sh|c|css|exe|jar|zip|apk|cmd|bat|py)$"
+      },
+      {
+        "namespace": "multicommand",
+        "path": ".*\\.(txt|md|log|bak|tmp|js|html|tsx|sh|c|css|exe|jar|zip|apk|cmd|bat|py)$"
+      },
+      {
+        "namespace": "global",
+        "path": ".*\\.(txt|md|log|bak|tmp|js|html|tsx|sh|c|css|exe|jar|zip|apk|cmd|bat|py)$"
+      },
+      {
+        "namespace": "main",
+        "path": ".*\\.(txt|md|log|bak|tmp|js|html|tsx|sh|c|css|exe|jar|zip|apk|cmd|bat|py)$"
+      },
+      {
+        "namespace": "gulce_adminpower_addons",
+        "path": ".*\\.(txt|md|log|bak|tmp|js|html|tsx|sh|c|css|exe|jar|zip|apk|cmd|bat|py)$"
+      },
+      {
+        "namespace": "gss_security",
+        "path": ".*\\.(txt|md|log|bak|tmp|js|html|tsx|sh|c|css|exe|jar|zip|apk|cmd|bat|py)$"
+      },
+      {
+        "namespace": "_commands_",
+        "path": ".*\\.(txt|md|log|bak|tmp|js|html|tsx|sh|c|css|exe|jar|zip|apk|cmd|bat|py)$"
+      },
+      {
+        "namespace": "cooldown",
+        "path": ".*\\.(txt|md|log|bak|tmp|js|html|tsx|sh|c|css|exe|jar|zip|apk|cmd|bat|py)$"
+      },
+      {
+        "namespace": "cooldown2",
+        "path": ".*\\.(txt|md|log|bak|tmp|js|html|tsx|sh|c|css|exe|jar|zip|apk|cmd|bat|py)$"
+      },
+      {
+        "namespace": "admin",
+        "path": ".*\\.(txt|md|log|bak|tmp|js|html|tsx|sh|c|css|exe|jar|zip|apk|cmd|bat|py)$"
+      }
+    ]
+  },
+  "overlays": {
+    "entries": [
+      {
+        "formats": {
+          "min_inclusive": 81,
+          "max_inclusive": 94
+        },
+        "directory": "addons",
+        "min_format": 81,
+        "max_format": 94
+      }
+    ]
+  },
+  "features": {
+    "enabled": [
+      "minecraft:vanilla"
+    ]
+  },
+  "metadata": {
+    "authors": [
+      "Legends11"
+    ],
+    "contributors": [
+      "Community"
+    ],
+    "version": "2.7.0",
+    "minecraft_version": "1.21.4+",
+    "github": "https://github.com/ToolkitMC/mc-server-toolkit-dp",
+    "issues": "https://github.com/ToolkitMC/mc-server-toolkit-dp/issues",
+    "wiki": "https://github.com/ToolkitMC/mc-server-toolkit-dp/wiki",
+    "license": "MIT",
+    "description_extended": "Advanced vanilla server control and management toolkit for Minecraft",
+    "tags": [
+      "utility",
+      "server-management",
+      "administration",
+      "vanilla-plus"
+    ]
+  },
+  "language": {
+    "en_us": {
+      "name": "English",
+      "region": "United States",
+      "bidirectional": false
+    },
+    "en_gb": {
+      "name": "English",
+      "region": "United Kingdom",
+      "bidirectional": false
+    },
+    "tr_tr": {
+      "name": "Türkçe",
+      "region": "Türkiye",
+      "bidirectional": false
+    },
+    "de_de": {
+      "name": "Deutsch",
+      "region": "Deutschland",
+      "bidirectional": false
+    },
+    "fr_fr": {
+      "name": "Français",
+      "region": "France",
+      "bidirectional": false
+    },
+    "es_es": {
+      "name": "Español",
+      "region": "España",
+      "bidirectional": false
+    }
+  }
+}

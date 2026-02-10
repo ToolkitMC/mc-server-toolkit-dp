@@ -1,0 +1,2 @@
+execute as @p[tag=gulce_debug,limit=1,sort=arbitrary] at @s positioned ~ ~ ~ rotated as @s run tellraw @s ["",{"text":"[GLC] ","color":"light_purple","bold":true},{"text":"Dialog gösteriliyor...","color":"green"}]
+$trigger gulce_menu set $(id)
