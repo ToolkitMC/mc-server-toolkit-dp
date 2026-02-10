@@ -14,41 +14,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 2  # Son 2 commit'i al
       
-      - name: Get Latest Version
+      - name: Detect Changed Version
         id: version
         run: |
-          latest=$(find new_versions -maxdepth 1 -mindepth 1 -type d -printf '%f\n' | sort -V | tail -n 1)
-          if [ -z "$latest" ]; then
-            echo "No version folders found"
-            exit 1
+          # Hangi versiyon klasörü değişti bul
+          changed_dirs=$(git diff --name-only HEAD^ HEAD | grep '^new_versions/' | cut -d'/' -f2 | sort -u)
+          
+          if [ -z "$changed_dirs" ]; then
+            echo "No version changes detected"
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            exit 0
           fi
           
-          # Bu versiyon için tag var mı kontrol et
-          tag_pattern="${latest}-build"
-          existing_tags=$(git tag -l "${tag_pattern}*")
+          # En son değişen versiyonu al
+          latest=$(echo "$changed_dirs" | sort -V | tail -n 1)
+          build="${GITHUB_RUN_NUMBER}"
+          tag="${latest}-build${build}"
           
-          if [ -n "$existing_tags" ]; then
-            echo "Release already exists for version $latest"
-            echo "skip=true" >> $GITHUB_OUTPUT
-          else
-            build="${GITHUB_RUN_NUMBER}"
-            tag="${latest}-build${build}"
-            echo "mc_version=$latest" >> $GITHUB_OUTPUT
-            echo "tag_name=$tag" >> $GITHUB_OUTPUT
-            echo "skip=false" >> $GITHUB_OUTPUT
-            echo "Creating new release with tag: $tag"
-          fi
-      
-      - name: Check if should skip
-        if: steps.version.outputs.skip == 'true'
-        run: |
-          echo "Skipping release - version already released"
-          exit 0
+          echo "mc_version=$latest" >> $GITHUB_OUTPUT
+          echo "tag_name=$tag" >> $GITHUB_OUTPUT
+          echo "has_changes=true" >> $GITHUB_OUTPUT
+          echo "Detected changes in version: $latest"
       
       - name: Validate Datapack
-        if: steps.version.outputs.skip != 'true'
+        if: steps.version.outputs.has_changes == 'true'
         run: |
           DIR="new_versions/${{ steps.version.outputs.mc_version }}/datapack"
           [ -d "$DIR" ] || exit 1
@@ -56,7 +47,7 @@ jobs:
           [ -d "$DIR/data" ] || exit 1
       
       - name: Create ZIP
-        if: steps.version.outputs.skip != 'true'
+        if: steps.version.outputs.has_changes == 'true'
         run: |
           VERSION="${{ steps.version.outputs.mc_version }}"
           DIR="new_versions/$VERSION/datapack"
@@ -65,7 +56,7 @@ jobs:
           zip -r "$GITHUB_WORKSPACE/$ZIP" .
       
       - name: Create Release
-        if: steps.version.outputs.skip != 'true'
+        if: steps.version.outputs.has_changes == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag_name }}
