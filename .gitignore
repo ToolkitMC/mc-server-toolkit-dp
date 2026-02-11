@@ -231,7 +231,6 @@ Translations/*.g.xlf
 *.csv
 *.xlsx
 *.xls
-data/
 
 # ═══════════════════════════════════════════════════
 # SECURITY & CREDENTIALS
