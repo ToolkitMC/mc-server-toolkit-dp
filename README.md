@@ -63,6 +63,12 @@ Admin eylem menüsü:
 
 /function admin:commands/sethome {id:"x"}
 /function admin:commands/home {id:"x"}
+/dialog show @s command_alias:menu
+/function scheduler:add {time:<time>,command:"<command>",player:"<targets>"}
+/function player_tracker:detailed_stats {player:"x"}
+/function global:admin_tools
+/function gss_security:gui/main_menu
+/function gss_security:anti_xray/scan
 
 /function custom:tools/kick/menu
 ```
