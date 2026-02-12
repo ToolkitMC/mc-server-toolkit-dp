@@ -1,38 +1,72 @@
-## Description
-<!-- Briefly describe what this PR does -->
+## 📄 Description
+<!-- What does this PR change and why is it needed? -->
+<!-- Link related issues: Fixes #123 -->
 
-## Type of Change
-- [ ] Bug fix
+---
+
+## 🔧 Type of Change
+- [ ] Bug fix (non-breaking change)
 - [ ] New feature
 - [ ] Documentation update
-- [ ] Refactoring
-- [ ] Other (please describe):
-
-## Minecraft Version
-<!-- Which MC version does this affect? -->
-- [ ] 1.21.6
+- [ ] Performance improvement
+- [ ] Refactoring (no functional change)
+- [ ] Breaking change
 - [ ] Other:
 
-## Changes Made
-<!-- List the main changes -->
+---
+
+## 🎮 Minecraft Version
+<!-- Target runtime version(s) -->
+- [ ] 1.21.6
+- [ ] Snapshot
+- [ ] Multiple versions
+- [ ] Other:
+
+### Pack Format
+<!-- If known -->
+- pack_format:
+
+---
+
+## 📦 Datapack Scope
+<!-- What parts are affected? -->
+- [ ] Functions
+- [ ] Tags
+- [ ] Loot tables
+- [ ] Predicates
+- [ ] Advancements
+- [ ] Item modifiers
+- [ ] Structures
+- [ ] Recipes
+- [ ] pack.mcmeta
+- [ ] Other:
+
+---
+
+## 🧠 Changes Made
+<!-- High-level technical summary -->
 - 
 - 
 - 
 
-## Testing
-<!-- How did you test these changes? -->
-- [ ] Tested in single-player
-- [ ] Tested on server
-- [ ] Not tested yet
+---
 
-## Checklist
-- [ ] Code follows datapack best practices
-- [ ] Functions are documented
-- [ ] pack.mcmeta is updated if needed
-- [ ] No syntax errors
+## ⚠️ Breaking Changes
+<!-- Required if Type = Breaking change -->
+- [ ] None
+- [ ] Yes (describe below)
 
-## Screenshots (if applicable)
-<!-- Add screenshots if relevant -->
+**Details:**
+<!-- Example: Renamed function namespace / Removed tag / Changed storage schema -->
 
-## Additional Notes
-<!-- Any other information -->
+---
+
+## 🧪 Testing
+### Environment
+- [ ] Single-player world
+- [ ] Dedicated server (Paper / Fabric / Vanilla)
+- [ ] Realm
+- [ ] Not tested
+
+### Test Details
+<!-- Commands executed, scenarios tested, edge cases -->

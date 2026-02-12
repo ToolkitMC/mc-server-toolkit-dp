@@ -1,0 +1,90 @@
+{
+  "type": "notice",
+  "title": "MIT License",
+  "body": [
+    {
+      "type": "plain_message",
+      "contents": "MIT License"
+    },
+    {
+      "type": "plain_message",
+      "contents": ""
+    },
+    {
+      "type": "plain_message",
+      "contents": "Copyright (c) 2026 Legends11"
+    },
+    {
+      "type": "plain_message",
+      "contents": ""
+    },
+    {
+      "type": "plain_message",
+      "contents": "Permission is hereby granted, free of charge, to any person obtaining a copy"
+    },
+    {
+      "type": "plain_message",
+      "contents": "of this software and associated documentation files (the \"Software\"), to deal"
+    },
+    {
+      "type": "plain_message",
+      "contents": "in the Software without restriction, including without limitation the rights"
+    },
+    {
+      "type": "plain_message",
+      "contents": "to use, copy, modify, merge, publish, distribute, sublicense, and/or sell"
+    },
+    {
+      "type": "plain_message",
+      "contents": "copies of the Software, and to permit persons to whom the Software is"
+    },
+    {
+      "type": "plain_message",
+      "contents": "furnished to do so, subject to the following conditions:"
+    },
+    {
+      "type": "plain_message",
+      "contents": ""
+    },
+    {
+      "type": "plain_message",
+      "contents": "The above copyright notice and this permission notice shall be included in all"
+    },
+    {
+      "type": "plain_message",
+      "contents": "copies or substantial portions of the Software."
+    },
+    {
+      "type": "plain_message",
+      "contents": ""
+    },
+    {
+      "type": "plain_message",
+      "contents": "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR"
+    },
+    {
+      "type": "plain_message",
+      "contents": "IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,"
+    },
+    {
+      "type": "plain_message",
+      "contents": "FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE"
+    },
+    {
+      "type": "plain_message",
+      "contents": "AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER"
+    },
+    {
+      "type": "plain_message",
+      "contents": "LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,"
+    },
+    {
+      "type": "plain_message",
+      "contents": "OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE"
+    },
+    {
+      "type": "plain_message",
+      "contents": "SOFTWARE."
+    }
+  ]
+}
