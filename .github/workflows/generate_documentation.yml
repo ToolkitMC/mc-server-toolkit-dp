@@ -1,0 +1,125 @@
+name: Generate Documentation
+
+on:
+  push:
+    paths:
+      - 'new_versions/**/datapack/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  document:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Generate comprehensive documentation
+        run: |
+          echo "# 📚 Datapack Documentation" > DOCUMENTATION.md
+          echo "" >> DOCUMENTATION.md
+          echo "Auto-generated documentation for all datapacks in this repository." >> DOCUMENTATION.md
+          echo "" >> DOCUMENTATION.md
+          echo "**Last updated:** $(date '+%Y-%m-%d %H:%M:%S')" >> DOCUMENTATION.md
+          echo "" >> DOCUMENTATION.md
+          
+          # Her datapack için döküman oluştur
+          find new_versions -name "pack.mcmeta" -type f | while read mcmeta; do
+            datapack_dir=$(dirname "$mcmeta")
+            version_dir=$(dirname "$datapack_dir")
+            version_name=$(basename "$version_dir")
+            
+            echo "## 📦 Version: $version_name" >> DOCUMENTATION.md
+            echo "" >> DOCUMENTATION.md
+            
+            # pack.mcmeta bilgileri
+            if command -v jq &> /dev/null; then
+              pack_format=$(jq -r '.pack.pack_format // "unknown"' "$mcmeta" 2>/dev/null)
+              description=$(jq -r '.pack.description // "No description"' "$mcmeta" 2>/dev/null)
+              echo "- **Pack Format:** $pack_format" >> DOCUMENTATION.md
+              echo "- **Description:** $description" >> DOCUMENTATION.md
+            fi
+            echo "" >> DOCUMENTATION.md
+            
+            # Namespace'leri listele
+            if [ -d "$datapack_dir/data" ]; then
+              echo "### 📂 Namespaces:" >> DOCUMENTATION.md
+              echo "" >> DOCUMENTATION.md
+              
+              find "$datapack_dir/data" -mindepth 1 -maxdepth 1 -type d | sort | while read namespace; do
+                ns_name=$(basename "$namespace")
+                echo "#### \`$ns_name\`" >> DOCUMENTATION.md
+                echo "" >> DOCUMENTATION.md
+                
+                # Functions
+                if [ -d "$namespace/function" ] || [ -d "$namespace/functions" ]; then
+                  func_count=$(find "$namespace" -name "*.mcfunction" -type f 2>/dev/null | wc -l)
+                  echo "**⚙️ Functions ($func_count):**" >> DOCUMENTATION.md
+                  echo "" >> DOCUMENTATION.md
+                  find "$namespace" -name "*.mcfunction" -type f | sort | while read func; do
+                    func_path=$(echo "$func" | sed "s|^$datapack_dir/data/||")
+                    echo "- \`$func_path\`" >> DOCUMENTATION.md
+                  done
+                  echo "" >> DOCUMENTATION.md
+                fi
+                
+                # Advancements
+                if [ -d "$namespace/advancement" ] || [ -d "$namespace/advancements" ]; then
+                  adv_count=$(find "$namespace" -path "*/advancement*/*.json" -type f 2>/dev/null | wc -l)
+                  [ $adv_count -gt 0 ] && echo "**🏆 Advancements:** $adv_count" >> DOCUMENTATION.md && echo "" >> DOCUMENTATION.md
+                fi
+                
+                # Loot Tables
+                if [ -d "$namespace/loot_table" ] || [ -d "$namespace/loot_tables" ]; then
+                  loot_count=$(find "$namespace" -path "*/loot_table*/*.json" -type f 2>/dev/null | wc -l)
+                  [ $loot_count -gt 0 ] && echo "**🎁 Loot Tables:** $loot_count" >> DOCUMENTATION.md && echo "" >> DOCUMENTATION.md
+                fi
+                
+                # Recipes
+                if [ -d "$namespace/recipe" ] || [ -d "$namespace/recipes" ]; then
+                  recipe_count=$(find "$namespace" -path "*/recipe*/*.json" -type f 2>/dev/null | wc -l)
+                  [ $recipe_count -gt 0 ] && echo "**📜 Recipes:** $recipe_count" >> DOCUMENTATION.md && echo "" >> DOCUMENTATION.md
+                fi
+                
+                # Tags
+                if [ -d "$namespace/tag" ] || [ -d "$namespace/tags" ]; then
+                  tag_count=$(find "$namespace" -path "*/tag*/*.json" -type f 2>/dev/null | wc -l)
+                  [ $tag_count -gt 0 ] && echo "**🏷️ Tags:** $tag_count" >> DOCUMENTATION.md && echo "" >> DOCUMENTATION.md
+                fi
+                
+                # Predicates
+                if [ -d "$namespace/predicate" ] || [ -d "$namespace/predicates" ]; then
+                  pred_count=$(find "$namespace" -path "*/predicate*/*.json" -type f 2>/dev/null | wc -l)
+                  [ $pred_count -gt 0 ] && echo "**🔍 Predicates:** $pred_count" >> DOCUMENTATION.md && echo "" >> DOCUMENTATION.md
+                fi
+                
+              done
+            fi
+            
+            echo "---" >> DOCUMENTATION.md
+            echo "" >> DOCUMENTATION.md
+          done
+          
+          # İstatistikler
+          echo "## 📊 Statistics" >> DOCUMENTATION.md
+          echo "" >> DOCUMENTATION.md
+          
+          total_datapacks=$(find new_versions -name "pack.mcmeta" -type f | wc -l)
+          total_functions=$(find new_versions -path "*/datapack/data/*/function*/*.mcfunction" -type f 2>/dev/null | wc -l)
+          total_json=$(find new_versions -path "*/datapack/**/*.json" -type f 2>/dev/null | wc -l)
+          
+          echo "- **Total Datapacks:** $total_datapacks" >> DOCUMENTATION.md
+          echo "- **Total Functions:** $total_functions" >> DOCUMENTATION.md
+          echo "- **Total JSON Files:** $total_json" >> DOCUMENTATION.md
+          echo "" >> DOCUMENTATION.md
+          echo "---" >> DOCUMENTATION.md
+          echo "*Generated by GitHub Actions*" >> DOCUMENTATION.md
+      
+      - name: Commit documentation
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git add DOCUMENTATION.md
+          git diff --staged --quiet || git commit -m "📝 Update datapack documentation [skip ci]"
+          git push
