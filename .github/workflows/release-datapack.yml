@@ -4,66 +4,101 @@ on:
     branches:
       - main
     paths:
-      - 'new_versions/**'
+      - 'datapacks/glc_permissions/**'
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
 permissions:
   contents: write
+
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2  # Son 2 commit'i al
+          fetch-depth: 2
       
-      - name: Detect Changed Version
+      - name: Get Version
         id: version
         run: |
-          # Hangi versiyon klasörü değişti bul
-          changed_dirs=$(git diff --name-only HEAD^ HEAD | grep '^new_versions/' | cut -d'/' -f2 | sort -u)
-          
-          if [ -z "$changed_dirs" ]; then
-            echo "No version changes detected"
-            echo "has_changes=false" >> $GITHUB_OUTPUT
-            exit 0
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            # Son commit'ten versiyon bilgisi çek (commit message'dan)
+            VERSION=$(git log -1 --pretty=%B | grep -oP 'v\d+\.\d+\.\d+' | head -1)
+            if [ -z "$VERSION" ]; then
+              VERSION="v1.0.${GITHUB_RUN_NUMBER}"
+            fi
           fi
           
-          # En son değişen versiyonu al
-          latest=$(echo "$changed_dirs" | sort -V | tail -n 1)
-          build="${GITHUB_RUN_NUMBER}"
-          tag="${latest}-build${build}"
-          
-          echo "mc_version=$latest" >> $GITHUB_OUTPUT
-          echo "tag_name=$tag" >> $GITHUB_OUTPUT
-          echo "has_changes=true" >> $GITHUB_OUTPUT
-          echo "Detected changes in version: $latest"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Releasing version: $VERSION"
       
       - name: Validate Datapack
-        if: steps.version.outputs.has_changes == 'true'
         run: |
-          DIR="new_versions/${{ steps.version.outputs.mc_version }}/datapack"
-          [ -d "$DIR" ] || exit 1
-          [ -f "$DIR/pack.mcmeta" ] || exit 1
-          [ -d "$DIR/data" ] || exit 1
+          DIR="datapacks/glc_permissions"
+          [ -d "$DIR" ] || { echo "Datapack directory not found"; exit 1; }
+          [ -f "$DIR/pack.mcmeta" ] || { echo "pack.mcmeta not found"; exit 1; }
+          [ -d "$DIR/data" ] || { echo "data directory not found"; exit 1; }
+          echo "✓ Datapack structure validated"
       
       - name: Create ZIP
-        if: steps.version.outputs.has_changes == 'true'
         run: |
-          VERSION="${{ steps.version.outputs.mc_version }}"
-          DIR="new_versions/$VERSION/datapack"
-          ZIP="mc-server-toolkit-$VERSION.zip"
+          VERSION="${{ steps.version.outputs.version }}"
+          DIR="datapacks/glc_permissions"
+          ZIP="glc_permissions-$VERSION.zip"
+          
           cd "$DIR"
           zip -r "$GITHUB_WORKSPACE/$ZIP" .
+          cd "$GITHUB_WORKSPACE"
+          
+          echo "Created: $ZIP"
+          ls -lh "$ZIP"
+      
+      - name: Generate Checksum
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          ZIP="glc_permissions-$VERSION.zip"
+          sha256sum "$ZIP" > checksums.txt
+          cat checksums.txt
       
       - name: Create Release
-        if: steps.version.outputs.has_changes == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.tag_name }}
-          name: MC Server Toolkit ${{ steps.version.outputs.tag_name }}
+          tag_name: ${{ steps.version.outputs.version }}
+          name: GLC Permissions ${{ steps.version.outputs.version }}
           body: |
-            Release for Minecraft ${{ steps.version.outputs.mc_version }}
-            Build: ${{ github.run_number }}
-          files: mc-server-toolkit-${{ steps.version.outputs.mc_version }}.zip
+            # 🔐 GLC Permissions System
+            
+            ## 📦 İndirme
+            `glc_permissions-${{ steps.version.outputs.version }}.zip`
+            
+            ## ⚙️ Kurulum
+            1. ZIP'i `world/datapacks/` klasörüne at
+            2. `/reload` komutu ile yükle
+            3. `/function glc_permissions:setup` ile başlat
+            
+            ## ✨ Özellikler
+            - 🎭 Dinamik rol sistemi
+            - 👥 Grup bazlı izinler
+            - 🔧 Esnek permission yönetimi
+            - 📊 Gerçek zamanlı kontrol
+            
+            ## 📋 Gereksinimler
+            - Minecraft 1.20+
+            - Paper/Spigot/Vanilla
+            
+            ---
+            **Build:** #${{ github.run_number }}
+          files: |
+            glc_permissions-${{ steps.version.outputs.version }}.zip
+            checksums.txt
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
