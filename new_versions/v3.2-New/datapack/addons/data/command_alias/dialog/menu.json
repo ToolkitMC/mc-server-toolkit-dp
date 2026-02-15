@@ -1,0 +1,28 @@
+{
+  "type": "minecraft:multi_action",
+  "title": "Command Aliases",
+  "body": {
+    "type": "minecraft:plain_message",
+    "contents": {
+      "text": "",
+      "extra": [
+        {
+          "text": "\n\n\n\n\n"
+        }
+      ]
+    }
+  },
+  "can_close_with_escape": true,
+  "pause": false,
+  "after_action": "close",
+  "columns": 1,
+  "actions": [
+    {
+      "label": "Ana Menüyü Aç",
+      "action": {
+        "type": "minecraft:run_command",
+        "command": "/trigger ca.menu"
+      }
+    }
+  ]
+}

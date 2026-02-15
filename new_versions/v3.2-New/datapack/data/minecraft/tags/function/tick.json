@@ -1,0 +1,7 @@
+{
+  "values": [
+    "main:loop/init",
+    "scheduler:tick",
+    "player_tracker:tick"
+  ]
+}

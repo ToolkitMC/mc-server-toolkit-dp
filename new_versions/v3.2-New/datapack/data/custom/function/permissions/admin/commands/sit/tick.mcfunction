@@ -1,0 +1,2 @@
+$execute as @e[tag=sitting_player] at @s unless entity @p[distance=..1.1,name=$(NAME)] run kill @s 
+$execute as @e[tag=sitting_player] at @s positioned ~ ~.95 ~ run data modify entity @s Rotation set from entity $(NAME) Rotation
