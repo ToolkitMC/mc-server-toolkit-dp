@@ -1,5 +1,10 @@
 # 🧰 MC-ServerToolkit-PP v2.0
 
+> ⚠️ Bu proje artık aktif olarak geliştirilmemektedir.
+---
+> Güncel proje: [tickwarden/Gulce_AdminPower](https://github.com/tickwarden/Gulce_AdminPower)
+
+---
 > **Performans odaklı, vanilla tabanlı sunucu yönetim datapack’i**
 
 MC-ServerToolkit++, Minecraft Java Edition sunucuları için geliştirilen; **yönetim araçları**, **menü sistemleri** ve **genişletilebilir yardımcı modüller** sunan özel bir **vanilla datapack** projesidir. Genel oyuncu kullanımı için değil, **yetkili / teknik kullanım** için tasarlanmıştır.
